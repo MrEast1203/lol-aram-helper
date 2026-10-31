@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { buildMatcher, detectOffers, normalize, matchText } = require('../src/main/matcher');
 const { AugmentDetector } = require('../src/main/augmentDetector');
-const { matchingGuides } = require('../src/main/guides');
+const { guidesForChampion } = require('../src/main/guides');
 
 const AUGS = [
   { id: 1001, name: '泰坦的決意', rarityName: 'prismatic' },
@@ -106,59 +106,26 @@ test('a single stray match is not a selection screen', () => {
   assert.equal(offers.length, 0);
 });
 
-test('detector records the clicked card when the screen closes', async () => {
-  const settings = mockSettings();
-  let lines = [line('泰坦的決意', 400, 500), line('裝甲衝擊', 850, 500), line('侵蝕裝甲', 1300, 500)];
-  const native = { ocr: async () => ({ lines, ms: 1 }) };
+test('scan reports progress per strip and falls back to a sweep', async () => {
+  const settings = mockSettings({ titleRowY: 0.3 }); // stale row: nothing there
+  const good = [line('泰坦的決意', 400, 500), line('裝甲衝擊', 850, 500), line('侵蝕裝甲', 1300, 500)];
+  const native = {
+    ocr: async (rect, lang, opts) => {
+      if (opts.bands.length === 1) return { lines: [], ms: 1 };
+      opts.bands.forEach((_, i) => opts.onProgress(i + 1));
+      return { lines: good, ms: 1 };
+    },
+  };
   const det = new AugmentDetector({ native, settings });
   det.setAugments(AUGS);
-  const picked = [];
-  det.on('picked', (id) => picked.push(id));
-  const rect = { x: 0, y: 0, w: 1920, h: 1080 };
-  await det.scan(rect);
-  assert.equal(det.offers.length, 3);
-  det.onMouseDown(890, 450); // click on the middle card
-  lines = [];
-  await det.scan(rect);
-  assert.deepEqual(picked, []); // one miss is not enough (flicker)
-  await det.scan(rect);
-  assert.deepEqual(picked, [3049]);
-  assert.equal(det.offers.length, 0);
-});
-
-test('reroll keeps the same screen; next screen resolves the previous pick', async () => {
-  const settings = mockSettings();
-  let lines = [line('泰坦的決意', 400, 500), line('裝甲衝擊', 850, 500), line('侵蝕裝甲', 1300, 500)];
-  const det = new AugmentDetector({ native: { ocr: async () => ({ lines, ms: 1 }) }, settings });
-  det.setAugments(AUGS);
-  const picked = [];
-  det.on('picked', (id) => picked.push(id));
-  const rect = { x: 0, y: 0, w: 1920, h: 1080 };
-  await det.scan(rect);
-  lines = [line('泰坦的決意', 400, 500), line('衝鋒', 870, 500), line('侵蝕裝甲', 1300, 500)]; // rerolled middle
-  await det.scan(rect);
-  assert.deepEqual(picked, []);
-  det.onMouseDown(420, 400); // pick the left card
-  lines = [line('亮起來！', 400, 500), line('巨人', 870, 500), line('質變：稜鏡', 1300, 500)]; // next pending screen
-  await det.scan(rect);
-  assert.deepEqual(picked, [1001]);
-  assert.equal(det.offers.length, 3);
-});
-
-test('clicking outside the cards (hide button) records nothing', async () => {
-  const settings = mockSettings();
-  let lines = [line('泰坦的決意', 400, 500), line('裝甲衝擊', 850, 500)];
-  const det = new AugmentDetector({ native: { ocr: async () => ({ lines, ms: 1 }) }, settings });
-  det.setAugments(AUGS);
-  const picked = [];
-  det.on('picked', (id) => picked.push(id));
-  const rect = { x: 0, y: 0, w: 1920, h: 1080 };
-  await det.scan(rect);
-  det.onMouseDown(900, 1000); // far below the cards
-  lines = [];
-  await det.scan(rect);
-  await det.scan(rect);
-  assert.deepEqual(picked, []);
+  const seen = [];
+  const r = await det.scan({ x: 0, y: 0, w: 1920, h: 1080 }, { onProgress: (done, total) => seen.push([done, total]) });
+  assert.equal(r.offers.length, 3);
+  assert.ok(r.swept);
+  const last = seen[seen.length - 1];
+  assert.equal(last[0], last[1], 'progress ends at 100%');
+  assert.ok(seen.every(([d, t]) => d <= t));
+  assert.ok(Math.abs(settings.get().titleRowY - 511 / 1080) < 0.01, 'row re-learned');
 });
 
 test('helper.ps1 is ASCII-only (PowerShell 5.1 reads BOM-less scripts as the ANSI codepage)', () => {
@@ -166,7 +133,7 @@ test('helper.ps1 is ASCII-only (PowerShell 5.1 reads BOM-less scripts as the ANS
   assert.ok(!/[^\x00-\x7F]/.test(src));
 });
 
-test('guide matching by augment and champion', () => {
+test('guides are shown per champion regardless of augments', () => {
   const guides = [
     { id: 'a', enabled: true, augmentIds: [3049], championIds: [], items: [1029] },
     { id: 'b', enabled: true, augmentIds: [3049], championIds: [266], items: [] },
@@ -174,12 +141,25 @@ test('guide matching by augment and champion', () => {
     { id: 'd', enabled: false, augmentIds: [3049], championIds: [], items: [] },
   ];
   assert.deepEqual(
-    matchingGuides(guides, 266, [3049]).map((g) => g.id),
+    guidesForChampion(guides, 266).map((g) => g.id),
     ['a', 'b']
   );
   assert.deepEqual(
-    matchingGuides(guides, 17, []).map((g) => g.id),
-    ['c']
+    guidesForChampion(guides, 17).map((g) => g.id),
+    ['a', 'c']
   );
-  assert.deepEqual(matchingGuides(guides, 17, [1001]).map((g) => g.id), ['c']);
+});
+
+test('champion details stay valid across data releases of one game patch', async () => {
+  const { DataStore } = require('../src/main/data');
+  const ds = new DataStore({ dir: require('os').tmpdir(), settings: { get: () => ({ locale: 'zh-TW', apiKey: '' }) } });
+  ds.latestVersion = '16.21.5';
+  ds.champions.set(266, { dataVersion: '16.21.4', data: { champion: { id: 266 } } });
+  ds.champions.set(17, { dataVersion: '16.20.9', data: { champion: { id: 17 } } });
+  // Same patch: served from cache without any request (there is no API key here).
+  assert.equal((await ds.getChampion(266)).stale, false);
+  assert.equal((await ds.getChampion(17, { fetch: false })).stale, true);
+  const st = ds.status();
+  assert.equal(st.cachedChampions, 1);
+  assert.equal(st.totalCachedChampions, 2);
 });

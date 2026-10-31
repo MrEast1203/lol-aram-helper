@@ -1,14 +1,14 @@
-// Global keyboard/mouse hook: Tab for the build panel, a scan hotkey, clicks for
-// augment picks. It only listens; nothing is ever sent to the game.
+// Global keyboard hook: Tab for the build panel and the scan / hide hotkeys.
+// It only listens; nothing is ever sent to the game.
 const { EventEmitter } = require('events');
 
 class GlobalInput extends EventEmitter {
-  constructor(log = console, getScanHotkey = () => null) {
+  // getHotkeys() -> { scan: 'F7', hide: 'F8' } (uiohook key names)
+  constructor(log = console, getHotkeys = () => ({})) {
     super();
     this.log = log;
-    this.getScanHotkey = getScanHotkey;
-    this.tabDown = false;
-    this.hotkeyDown = false;
+    this.getHotkeys = getHotkeys;
+    this.down = new Set();
     this.hook = null;
   }
 
@@ -16,26 +16,17 @@ class GlobalInput extends EventEmitter {
     try {
       const { uIOhook, UiohookKey } = require('uiohook-napi');
       this.hook = uIOhook;
-      const hotkeyCode = () => UiohookKey[this.getScanHotkey()] ?? null;
       uIOhook.on('keydown', (e) => {
-        if (e.keycode === UiohookKey.Tab && !this.tabDown) {
-          this.tabDown = true;
-          this.emit('tab', true);
-        } else if (e.keycode === hotkeyCode() && !this.hotkeyDown) {
-          this.hotkeyDown = true;
-          this.emit('scanHotkey');
+        if (this.down.has(e.keycode)) return; // ignore key repeat
+        this.down.add(e.keycode);
+        if (e.keycode === UiohookKey.Tab) return this.emit('tab', true);
+        for (const [action, key] of Object.entries(this.getHotkeys())) {
+          if (e.keycode === UiohookKey[key]) this.emit('hotkey', action);
         }
       });
       uIOhook.on('keyup', (e) => {
-        if (e.keycode === UiohookKey.Tab && this.tabDown) {
-          this.tabDown = false;
-          this.emit('tab', false);
-        } else if (e.keycode === hotkeyCode()) {
-          this.hotkeyDown = false;
-        }
-      });
-      uIOhook.on('mousedown', (e) => {
-        if (e.button === 1) this.emit('click', e.x, e.y);
+        this.down.delete(e.keycode);
+        if (e.keycode === UiohookKey.Tab) this.emit('tab', false);
       });
       uIOhook.start();
       return true;

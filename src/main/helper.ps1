@@ -127,14 +127,21 @@ function Invoke-Ocr($req) {
   $lines = New-Object System.Collections.ArrayList
   try {
     if ($req.save) { $bmp.Save($req.save, [System.Drawing.Imaging.ImageFormat]::Png) }
+    $done = 0
     foreach ($band in $bands) {
       $by = [Math]::Max(0, [int]$band.y)
       $bh = [Math]::Min([int]$band.h, $bmp.Height - $by)
-      if ($bh -lt 8) { continue }
-      $strip = Get-Strip $bmp $by $bh $scale
-      try {
-        foreach ($t in $thresholds) { Read-Lines $engine $strip ([int]$t) $req.x ($req.y + $by) $scale $lines }
-      } finally { $strip.Dispose() }
+      if ($bh -ge 8) {
+        $strip = Get-Strip $bmp $by $bh $scale
+        try {
+          foreach ($t in $thresholds) { Read-Lines $engine $strip ([int]$t) $req.x ($req.y + $by) $scale $lines }
+        } finally { $strip.Dispose() }
+      }
+      $done++
+      if ($req.progress) {
+        [Console]::Out.WriteLine((@{ id = $req.id; progress = $done; total = $bands.Count } | ConvertTo-Json -Compress))
+        [Console]::Out.Flush()
+      }
     }
   } finally { $bmp.Dispose() }
   @{ lines = $lines; ms = $sw.ElapsedMilliseconds }

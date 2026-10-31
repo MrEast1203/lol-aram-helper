@@ -1,7 +1,7 @@
 {
   "name": "lol-aram-helper",
   "productName": "ARAM Helper",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "LoL ARAM Mayhem overlay: champion tiers, augment tiers, builds and custom guides",
   "main": "src/main/main.js",
   "author": "Kan",

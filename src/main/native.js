@@ -49,13 +49,18 @@ class NativeHelper {
     }
     const p = this.pending.get(msg.id);
     if (!p) return;
+    // Intermediate progress line (no `ok`): the request is still running.
+    if (msg.progress != null && msg.ok === undefined) {
+      p.onProgress?.(msg.progress, msg.total);
+      return;
+    }
     this.pending.delete(msg.id);
     clearTimeout(p.timer);
     if (msg.ok) p.resolve(msg);
     else p.reject(new Error(msg.error || 'helper error'));
   }
 
-  send(req, timeoutMs = 15000) {
+  send(req, timeoutMs = 15000, onProgress) {
     if (!this.proc) this.start();
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
@@ -63,21 +68,22 @@ class NativeHelper {
         this.pending.delete(id);
         reject(new Error(`helper timeout: ${req.cmd}`));
       }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
-      this.proc.stdin.write(JSON.stringify({ ...req, id }) + '\n');
+      this.pending.set(id, { resolve, reject, timer, onProgress });
+      this.proc.stdin.write(JSON.stringify({ ...req, id, progress: !!onProgress }) + '\n');
     });
   }
 
-  async call(req, timeoutMs) {
+  async call(req, timeoutMs, onProgress) {
     if (!this.proc) this.start();
     await this.ready;
-    return this.send(req, timeoutMs);
+    return this.send(req, timeoutMs, onProgress);
   }
 
   ocr(rect, lang, opts = {}) {
     return this.call(
       { cmd: 'ocr', x: rect.x, y: rect.y, w: rect.w, h: rect.h, lang, scale: opts.scale || 1, save: opts.save, file: opts.file, bands: opts.bands, thresholds: opts.thresholds },
-      30000
+      30000,
+      opts.onProgress
     );
   }
   capture(rect, file) {

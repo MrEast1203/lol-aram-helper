@@ -18,8 +18,27 @@ const { GuideStore } = require('./guides');
 const { GlobalInput } = require('./input');
 const { Controller } = require('./controller');
 
+// ARAM_VERSION_OVERRIDE is only for testing the takeover below.
+const APP_VERSION = process.env.ARAM_VERSION_OVERRIDE || app.getVersion();
+
+function isNewer(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+  return false;
+}
+
+// One copy at a time. A newer version started later takes over: the running older
+// copy quits when it hears about it, and the new copy retries the lock for a few seconds.
 // Simulation runs (ARAM_SIM) may start next to an installed copy.
-if (!process.env.ARAM_SIM && !app.requestSingleInstanceLock()) app.quit();
+async function acquireSingleInstance() {
+  if (process.env.ARAM_SIM) return true;
+  for (let i = 0; i < 10; i++) {
+    if (app.requestSingleInstanceLock({ version: APP_VERSION })) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
 
 const RENDERER = path.join(__dirname, '..', 'renderer');
 const PRELOAD = path.join(__dirname, '..', 'preload.js');
@@ -224,8 +243,8 @@ function registerIpc() {
     guides.remove(id);
     notifyData('guides');
   });
-  ipcMain.handle('game:setPicked', (_e, ids) => controller.setPicked(ids));
   ipcMain.handle('scan:manual', () => controller.manualScan());
+  ipcMain.handle('scan:hide', () => controller.hideOffers());
   ipcMain.handle('overlay:interactive', (_e, on) => overlay?.setIgnoreMouseEvents(!on, { forward: true }));
   ipcMain.handle('app:openScans', () => {
     require('fs').mkdirSync(controller.scanLogDir(), { recursive: true });
@@ -297,6 +316,7 @@ function registerIpc() {
 }
 
 app.whenReady().then(async () => {
+  if (!(await acquireSingleInstance())) return app.quit();
   const userData = app.getPath('userData');
   settings = new Settings(path.join(userData, 'settings.json'), [process.cwd(), path.dirname(process.execPath), path.join(app.getAppPath(), '..')]);
   data = new DataStore({ dir: path.join(userData, 'aram-data'), settings, log });
@@ -304,7 +324,7 @@ app.whenReady().then(async () => {
   lcu = new LcuClient({ native, settings, log });
   detector = new AugmentDetector({ native, settings, log });
   guides = new GuideStore(path.join(userData, 'guides.json'));
-  input = new GlobalInput(log, () => settings.get().scanHotkey);
+  input = new GlobalInput(log, () => ({ scan: settings.get().scanHotkey, hide: settings.get().hideHotkey }));
   controller = new Controller({ settings, data, lcu, native, detector, guides, input, historyFile: path.join(userData, 'history.json'), log });
   controller.toOverlayRect = overlayRect;
 
@@ -332,12 +352,18 @@ app.whenReady().then(async () => {
     const b = screen.dipToScreenRect(null, screen.getPrimaryDisplay().bounds);
     controller.startSimulation(process.env.ARAM_SIM, { x: b.x, y: b.y, w: b.width, h: b.height }, { tab: !!process.env.ARAM_SIM_TAB });
   }
-  if (process.env.ARAM_SHOTS) require('./devshots').runDevShots(dashboard, process.env.ARAM_SHOTS);
+  if (process.env.ARAM_SHOTS) require('./devshots').runDevShots(dashboard, process.env.ARAM_SHOTS, overlay);
   data.checkVersion();
   setInterval(() => data.checkVersion(), 30 * 60 * 1000);
 });
 
-app.on('second-instance', () => showDashboard());
+app.on('second-instance', (_e, _argv, _cwd, other) => {
+  if (other?.version && isNewer(other.version, APP_VERSION)) {
+    log.info(`[app] newer version ${other.version} started, quitting ${APP_VERSION}`);
+    return app.quit();
+  }
+  if (dashboard) showDashboard();
+});
 app.on('before-quit', () => {
   quitting = true;
   input?.stop();

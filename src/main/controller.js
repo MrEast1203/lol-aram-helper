@@ -23,9 +23,10 @@ class Controller extends EventEmitter {
       gameWindow: null,
       clientWindow: null,
       tabHeld: false,
-      scanSession: false,
+      // Current/last manual scan: { active, progress, total, found, ms, error, at }
+      scan: null,
       toast: null,
-      detector: { scans: 0, lastMs: null, lastError: null, lastScanAt: null, reason: null },
+      detector: { scans: 0, lastMs: null, lastError: null, lastScanAt: null },
       data: data.status(),
       history: this.loadHistory(),
     };
@@ -62,35 +63,26 @@ class Controller extends EventEmitter {
     this.data.on('tables', (t) => this.detector.setAugments(t.augments));
     if (this.data.tables) this.detector.setAugments(this.data.tables.augments);
 
-    this.detector.on('offers', (offers) => {
-      if (offers.length) this.sessionSawOffers = true;
-      // The screen closed after being read: the manual scan session is done.
-      else if (this.sessionSawOffers) this.endScanSession();
-      this.patch({ offers: offers.map((o) => this.offerToView(o)) });
-    });
-    this.detector.on('picked', (id) => this.addPicked(id, true));
-
     this.input.on('tab', (down) => {
       if (this.sim) return;
       const fg = this.state.gameWindow?.foreground !== false;
       this.patch({ tabHeld: down && !!this.state.game && fg });
     });
-    this.input.on('click', (x, y) => this.detector.onMouseDown(x, y));
-    this.input.on('scanHotkey', () => {
-      if (this.state.game && this.state.gameWindow?.foreground !== false) this.manualScan();
+    this.input.on('hotkey', (action) => {
+      if (!this.state.game || this.state.gameWindow?.foreground === false) return;
+      if (action === 'scan') this.manualScan();
+      if (action === 'hide') this.hideOffers();
     });
 
     this.lcu.start();
     this.liveTimer = setInterval(() => this.liveTick(), 1500);
     this.windowTimer = setInterval(() => this.windowTick(), 1000);
-    this.scheduleScan(1500);
     this.patch({ windowMode: this.lcu.readWindowMode() });
   }
 
   stop() {
     clearInterval(this.liveTimer);
     clearInterval(this.windowTimer);
-    clearTimeout(this.scanTimer);
     this.lcu.stop();
   }
 
@@ -159,7 +151,6 @@ class Controller extends EventEmitter {
           queueId: match.queueId,
           win: !!stats.win,
           augments,
-          detected: game.picked,
         });
         return;
       } catch (e) {
@@ -189,7 +180,7 @@ class Controller extends EventEmitter {
   startSimulation(file, rect, { championId = 266, tab = false } = {}) {
     this.sim = file;
     this.patch({
-      game: { gameId: 'sim', queueId: 2400, gameMode: 'KIWI', championId, alias: '', level: 3, isDead: false, gameTime: 0, items: [], picked: [3049], pending: 1, startedAt: Date.now() },
+      game: { gameId: 'sim', queueId: 2400, gameMode: 'KIWI', championId, alias: '', level: 3, isDead: false, gameTime: 0, items: [], startedAt: Date.now() },
       gameWindow: { ...rect, foreground: true },
       tabHeld: tab,
     });
@@ -220,33 +211,14 @@ class Controller extends EventEmitter {
     return { player: mine, championId: byAlias?.id || this.champSelectChampion || null, alias };
   }
 
-  // Keeps the latest raw Live Client response per game so we can verify whether Riot
-  // exposes augments there (if it does, extractLiveAugments uses them instead of OCR).
-  saveLiveSnapshot(all) {
-    if (Date.now() - (this.lastSnapshot || 0) < 30000) return;
-    this.lastSnapshot = Date.now();
-    const dir = path.join(path.dirname(this.historyFile), 'live-snapshots');
-    const name = `${this.state.game?.gameId || 'game'}.json`;
-    fs.promises
-      .mkdir(dir, { recursive: true })
-      .then(() => fs.promises.writeFile(path.join(dir, name), JSON.stringify(all, null, 1)))
-      .then(() => fs.promises.readdir(dir))
-      .then((files) => Promise.all(files.sort().slice(0, -5).map((f) => fs.promises.rm(path.join(dir, f)))))
-      .catch(() => {});
-  }
-
   onLiveData(all) {
     if (!all?.activePlayer) return;
-    this.saveLiveSnapshot(all);
     const gameTime = all.gameData?.gameTime || 0;
     // A lower game time than before means a different game (e.g. LCU was not connected).
     if (this.state.game && gameTime + 30 < this.state.game.gameTime) this.endGame();
     const { player, championId, alias } = this.resolveChampion(all);
     const level = all.activePlayer.level || player?.level || 1;
-    const liveAugments = extractLiveAugments(all.activePlayer);
-    if (player?.isDead) this.lastDeadAt = Date.now();
     if (!this.state.game) {
-      this.detector.reset();
       this.patch({
         game: {
           gameId: this.pendingSession?.gameId || null,
@@ -258,15 +230,12 @@ class Controller extends EventEmitter {
           isDead: false,
           gameTime,
           items: [],
-          picked: [],
-          pending: 0,
           startedAt: Date.now(),
         },
       });
       this.patch({ windowMode: this.lcu.readWindowMode() });
       if (championId) this.data.getChampion(championId).catch(() => {});
     }
-    const picked = liveAugments || this.state.game.picked;
     this.patchGame({
       championId: this.state.game.championId || championId,
       alias,
@@ -275,36 +244,12 @@ class Controller extends EventEmitter {
       gameTime,
       gameMode: this.state.game.gameMode || all.gameData?.gameMode || null,
       items: (player?.items || []).map((i) => i.itemID),
-      picked,
-      pending: this.pendingScreens(level, picked.length),
     });
-  }
-
-  pendingScreens(level, pickedCount) {
-    const reached = this.settings.get().augmentLevels.filter((l) => level >= l).length;
-    return Math.max(0, reached - pickedCount);
   }
 
   endGame() {
     if (!this.state.game) return;
-    this.detector.reset();
-    this.patch({ game: null, offers: [], tabHeld: false, gameWindow: null });
-  }
-
-  addPicked(augmentId, fromDetector = false) {
-    const game = this.state.game;
-    if (!game || game.picked.includes(augmentId)) return;
-    const picked = [...game.picked, augmentId];
-    this.patchGame({ picked, pending: this.pendingScreens(game.level, picked.length) });
-    const aug = this.data.tables?.augments.find((a) => a.id === augmentId);
-    if (fromDetector) this.patch({ toast: { text: `已記錄海克斯：${aug?.name || augmentId}`, at: Date.now() } });
-  }
-
-  setPicked(ids) {
-    const game = this.state.game;
-    if (!game) return;
-    const picked = ids.map(Number);
-    this.patchGame({ picked, pending: this.pendingScreens(game.level, picked.length) });
+    this.patch({ game: null, offers: [], scan: null, tabHeld: false, gameWindow: null });
   }
 
   // ---------- windows & scanning ----------
@@ -331,71 +276,39 @@ class Controller extends EventEmitter {
     }
   }
 
-  scheduleScan(ms) {
-    clearTimeout(this.scanTimer);
-    this.scanTimer = setTimeout(() => this.scanTick(), ms);
-  }
-
-  // Why a scan should run right now, or null. Augment screens only open while the
-  // shop is usable: dead, back in the fountain after respawning, or at game start.
-  scanReason(now) {
-    const s = this.settings.get();
-    const game = this.state.game;
-    if (this.state.offers.length) return 'visible';
-    if (now < (this.manualUntil || 0)) return 'manual';
-    if (s.autoScan && game.pending > 0) {
-      if (game.isDead) return 'dead';
-      if (now - (this.lastDeadAt || 0) < s.respawnScanMs) return 'respawn';
-      if (game.gameTime < s.gameStartScanSec) return 'start';
-    }
-    if (s.scanIdleMs && now - (this.lastIdleScan || 0) >= s.scanIdleMs) return 'idle';
-    return null;
-  }
-
-  async scanTick() {
-    const s = this.settings.get();
-    const game = this.state.game;
+  // F7 / overlay button: one scan with live progress. The badges stay until the next
+  // scan replaces them (e.g. after a reroll) or F8 hides them.
+  async manualScan() {
     const win = this.state.gameWindow;
-    const now = Date.now();
-    const reason = game && win && win.foreground && this.detector.matcher ? this.scanReason(now) : null;
-    if (reason !== this.state.detector.reason) this.patch({ detector: { ...this.state.detector, reason } });
-    if (!reason) return this.scheduleScan(500);
-    if (reason === 'idle') this.lastIdleScan = now;
-    // Full sweep on a fresh manual scan, otherwise at most every 4s; in between only the title row.
-    const thorough = this.forceSweep || (reason !== 'visible' && now - (this.detector.lastSweep || 0) > 4000);
-    const save = this.forceSweep && !this.sim ? this.debugScanPath() : undefined;
-    this.forceSweep = false;
+    if (!this.state.game || this.scanning) return;
+    if (!win) return this.patch({ toast: { text: '找不到遊戲視窗', at: Date.now() } });
+    if (!this.detector.matcher) return this.patch({ toast: { text: '海克斯資料尚未載入', at: Date.now() } });
+    this.scanning = true;
+    const startedAt = Date.now();
+    this.patch({ scan: { active: true, progress: 0, total: 1, at: startedAt } });
+    const save = this.sim ? undefined : this.debugScanPath();
     try {
-      const r = await this.detector.scan(win, { file: this.sim, thorough, save });
+      const r = await this.detector.scan(win, {
+        file: this.sim,
+        save,
+        onProgress: (progress, total) => this.patch({ scan: { active: true, progress, total, at: startedAt } }),
+      });
       if (save) this.writeScanLog(save, r);
-      this.patch({ detector: { ...this.state.detector, scans: this.state.detector.scans + 1, lastMs: r.ms, lastError: null, lastScanAt: Date.now(), lastOffers: r.offers.length } });
+      const ms = Date.now() - startedAt;
+      this.patch({
+        offers: r.offers.map((o) => this.offerToView(o)),
+        scan: { active: false, found: r.offers.length, ms, at: Date.now() },
+        detector: { ...this.state.detector, scans: this.state.detector.scans + 1, lastMs: ms, lastError: null, lastScanAt: Date.now() },
+      });
     } catch (e) {
-      this.patch({ detector: { ...this.state.detector, lastError: e.message } });
+      this.patch({ scan: { active: false, error: e.message, at: Date.now() }, detector: { ...this.state.detector, lastError: e.message } });
+    } finally {
+      this.scanning = false;
     }
-    this.scheduleScan(Math.max(250, s.scanFastMs));
   }
 
-  // Hotkey / overlay button: scan now, keep scanning for a short session.
-  manualScan() {
-    if (!this.state.game) return;
-    const s = this.settings.get();
-    this.manualUntil = Date.now() + s.scanSessionMs;
-    this.forceSweep = true;
-    this.sessionSawOffers = false;
-    this.patch({ scanSession: true, toast: { text: '掃描海克斯中…', at: Date.now() } });
-    clearTimeout(this.sessionTimer);
-    this.sessionTimer = setTimeout(() => {
-      if (!this.sessionSawOffers) this.patch({ toast: { text: '沒有偵測到海克斯選擇畫面（截圖已存到掃描紀錄）', at: Date.now() } });
-      this.endScanSession();
-    }, s.scanSessionMs);
-    this.scheduleScan(0);
-  }
-
-  endScanSession() {
-    this.manualUntil = 0;
-    this.sessionSawOffers = false;
-    clearTimeout(this.sessionTimer);
-    if (this.state.scanSession) this.patch({ scanSession: false });
+  hideOffers() {
+    this.patch({ offers: [], scan: null });
   }
 
   scanLogDir() {
@@ -430,7 +343,7 @@ class Controller extends EventEmitter {
   }
 
   // Manual OCR test from the dashboard: an image file, the game window, or the primary screen.
-  // Uses a throwaway detector so a test never records picks for the running game.
+  // Results are only reported back, never shown on the overlay.
   async testScan(fallbackRect, imagePath, { file, save } = {}) {
     if (!this.detector.matcher) throw new Error('海克斯資料尚未載入');
     let rect = fallbackRect;
@@ -442,9 +355,7 @@ class Controller extends EventEmitter {
         inGame = true;
       }
     }
-    const probe = new this.detector.constructor({ native: this.native, settings: this.settings, log: this.log });
-    probe.matcher = this.detector.matcher;
-    const r = await probe.scan(rect, { save, file, thorough: true, learn: inGame });
+    const r = await this.detector.scan(rect, { save, file, learn: inGame });
     const names = new Map((this.data.tables?.augments || []).map((a) => [a.id, a.name]));
     return {
       rect: r.rect,
@@ -457,14 +368,4 @@ class Controller extends EventEmitter {
   }
 }
 
-// Future-proofing: use augments straight from the Live Client API if Riot ever exposes them.
-function extractLiveAugments(activePlayer) {
-  for (const [k, v] of Object.entries(activePlayer || {})) {
-    if (!/augment/i.test(k) || !Array.isArray(v)) continue;
-    const ids = v.map((x) => (typeof x === 'number' ? x : x?.id ?? x?.augmentId)).filter((x) => Number.isFinite(x) && x > 0);
-    if (ids.length) return ids;
-  }
-  return null;
-}
-
-module.exports = { Controller, extractLiveAugments };
+module.exports = { Controller };

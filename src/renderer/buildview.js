@@ -1,10 +1,10 @@
 // Build panel shared by the Tab overlay, champ select panel and dashboard.
-import { h, pct, num, tierBadge, itemRow, summarizeBuild, matchingGuides, augmentInfo } from './common.js';
+import { h, pct, num, tierBadge, itemRow, summarizeBuild, guidesForChampion } from './common.js';
 
-export function guideBox(db, g) {
+export function guideBox(db, g, hot = false) {
   return h(
     'div',
-    { class: 'guide-box col' },
+    { class: `guide-box col ${hot ? 'hot' : ''}` },
     h('div', { class: 'row' }, g.augmentIds.map((id) => db.augIcon(id, 22)), h('span', { class: 'title' }, g.name)),
     g.items.length ? itemRow(db, g.items, 30, true) : null,
     g.note ? h('div', { class: 'note' }, g.note) : null
@@ -53,10 +53,18 @@ export function buildBlock(db, build, index, { compact = false } = {}) {
   );
 }
 
-// The full panel: header, matched custom guides, picked augments, recommended builds.
-export function buildPanel(db, { championId, detail, guides, picked = [], buildsShown = 2, stale = false }) {
+// Custom guides for a champion, always shown (highlighted first: guides for the
+// augments currently on screen).
+export function guidesPanel(db, guides, championId, highlightAugmentIds = []) {
+  const list = guidesForChampion(guides, championId);
+  if (!list.length) return null;
+  const hot = (g) => g.augmentIds.some((id) => highlightAugmentIds.includes(id));
+  return h('div', { class: 'guides-panel col' }, h('div', { class: 'section' }, '📘 自訂攻略'), [...list.filter(hot), ...list.filter((g) => !hot(g))].map((g) => guideBox(db, g, hot(g))));
+}
+
+// Header and recommended builds.
+export function buildPanel(db, { championId, detail, buildsShown = 2, stale = false }) {
   const champ = db.champ(championId);
-  const matched = matchingGuides(guides, championId, picked);
   const builds = detail?.builds?.length ? detail.builds : detail?.build ? [detail.build] : [];
   return h(
     'div',
@@ -70,22 +78,6 @@ export function buildPanel(db, { championId, detail, guides, picked = [], builds
       tierBadge(champ?.stats?.tier),
       h('span', { class: 'muted' }, `#${db.champRank.get(championId) || '—'} · ${pct(champ?.stats?.winRate)}`)
     ),
-    matched.length ? h('div', { class: 'col' }, h('div', { class: 'section' }, '📘 自訂攻略'), matched.map((g) => guideBox(db, g))) : null,
-    picked.length
-      ? h(
-          'div',
-          { class: 'col' },
-          h('div', { class: 'section' }, '本局海克斯'),
-          h(
-            'div',
-            { class: 'row' },
-            picked.map((id) => {
-              const info = augmentInfo(db, detail, id);
-              return h('div', { class: 'picked-aug col' }, db.augIcon(id, 32), tierBadge(info.tier));
-            })
-          )
-        )
-      : null,
     builds.length
       ? h('div', { class: 'col' }, h('div', { class: 'section' }, '推薦出裝' + (stale ? '（舊版資料）' : '')), builds.slice(0, buildsShown).map((b, i) => buildBlock(db, b, i, { compact: i > 0 })))
       : h('div', { class: 'muted' }, detail?.error ? `出裝資料載入失敗：${detail.error}` : '出裝資料載入中…')

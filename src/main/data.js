@@ -3,10 +3,12 @@
 // Credit budget (free plan: 200/day) drives the caching policy:
 //  - config.json is free: it is polled for `dataVersion` at startup and every 30 minutes.
 //  - The 4 list tables (1 credit each) are refetched only when dataVersion changes.
-//  - Champion details (2 credits each) are fetched on demand. A full sync would cost
-//    4 + 173*2 = 350 credits, more than a day's quota, so the rest are prefetched in the
-//    background (most-picked first) while keeping `prefetchReserve` credits for on-demand use.
-//  - An older cached version is always served as a fallback when fetching fails.
+//  - Champion details (2 credits each) are fetched on demand and stay valid for the whole
+//    game patch, so a new data release (16.21.4 -> 16.21.5) does not throw them away.
+//    A full sync would cost 4 + 173*2 = 350 credits, more than a day's quota, so missing
+//    champions (then same-patch refreshes) are prefetched in the background, most-picked
+//    first, while keeping `prefetchReserve` credits for on-demand use.
+//  - Cached files are never deleted on update; an older patch is served as a fallback.
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
@@ -17,6 +19,8 @@ const TABLES = ['champions', 'augments', 'items', 'summoner-spells'];
 const CHAMPION_COST = 2;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const utcDay = () => new Date().toISOString().slice(0, 10);
+// "16.21.5" -> "16.21"
+const patchOf = (v) => String(v || '').split('.').slice(0, 2).join('.');
 
 class DataStore extends EventEmitter {
   constructor({ dir, settings, log = console }) {
@@ -61,8 +65,17 @@ class DataStore extends EventEmitter {
       error: this.error,
       loading: this.loading,
       prefetching: this.prefetching,
-      cachedChampions: [...this.champions.values()].filter((c) => c.dataVersion === this.currentVersion()).length,
+      cachedChampions: [...this.champions.values()].filter((c) => this.usable(c)).length,
+      latestChampions: [...this.champions.values()].filter((c) => c.dataVersion === this.currentVersion()).length,
+      totalCachedChampions: this.champions.size,
     };
+  }
+
+  // Champion details stay valid for the whole game patch (16.21.x); a new data
+  // release only refreshes them in the background with spare credits.
+  usable(entry) {
+    const cur = this.currentVersion();
+    return !!entry && !!cur && patchOf(entry.dataVersion) === patchOf(cur);
   }
 
   emitStatus() {
@@ -195,14 +208,14 @@ class DataStore extends EventEmitter {
     return path.join(this.localeDir(), 'champions', `${id}.json`);
   }
 
-  // Returns { dataVersion, data, stale } or null. `fetch: false` never spends credits.
-  async getChampion(id, { fetch: allowFetch = true } = {}) {
+  // Returns { dataVersion, data, stale } or null; `stale` means an older game patch.
+  // `fetch: false` never spends credits; `refresh` refetches a same-patch entry.
+  async getChampion(id, { fetch: allowFetch = true, refresh = false } = {}) {
     id = Number(id);
     if (!id) return null;
-    const cur = this.currentVersion();
     const cached = this.champions.get(id);
-    if (cached && cached.dataVersion === cur) return { ...cached, stale: false };
-    if (!allowFetch) return cached ? { ...cached, stale: true } : null;
+    if (this.usable(cached) && !refresh) return { ...cached, stale: false };
+    if (!allowFetch) return cached ? { ...cached, stale: !this.usable(cached) } : null;
     if (this.inflight.has(id)) return this.inflight.get(id);
     const p = (async () => {
       try {
@@ -214,7 +227,7 @@ class DataStore extends EventEmitter {
         return { ...entry, stale: false };
       } catch (e) {
         this.log.warn('[data] champion', id, e.message);
-        if (cached) return { ...cached, stale: true, error: e.message };
+        if (cached) return { ...cached, stale: !this.usable(cached), error: e.message };
         throw e;
       } finally {
         this.inflight.delete(id);
@@ -230,16 +243,17 @@ class DataStore extends EventEmitter {
     this.prefetching = true;
     this.emitStatus();
     try {
-      const order = [...this.tables.champions].sort((a, b) => (b.stats?.pickRate || 0) - (a.stats?.pickRate || 0));
-      for (const c of order) {
+      const byPick = [...this.tables.champions].sort((a, b) => (b.stats?.pickRate || 0) - (a.stats?.pickRate || 0));
+      // Missing (or older-patch) champions first, then same-patch refreshes to the newest release.
+      const missing = byPick.filter((c) => !this.usable(this.champions.get(c.id)));
+      const outdated = byPick.filter((c) => this.usable(this.champions.get(c.id)) && this.champions.get(c.id).dataVersion !== this.currentVersion());
+      for (const c of [...missing, ...outdated]) {
         const s = this.settings.get();
         if (!s.prefetch) break;
         const credits = this.creditsNow();
         if (credits && credits.remaining - CHAMPION_COST < s.prefetchReserve) break;
-        const cached = this.champions.get(c.id);
-        if (cached && cached.dataVersion === this.currentVersion()) continue;
         try {
-          await this.getChampion(c.id);
+          await this.getChampion(c.id, { refresh: true });
         } catch (e) {
           if (e.status === 429 || e.status === 401 || e.code === 'NO_API_KEY') break;
         }

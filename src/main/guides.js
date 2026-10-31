@@ -1,6 +1,6 @@
 // User-defined build guides, e.g. "裝甲衝擊 → 先出布甲".
-// A guide applies when (no champions listed OR current champion listed) AND
-// (one of its trigger augments was picked, or it has no triggers but lists champions).
+// A guide is shown for every champion it lists (all champions when none are listed).
+// Its augments are labels: offered cards with a guide get a 📘 hint on their badge.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -48,17 +48,8 @@ class GuideStore {
   }
 }
 
-function guideAppliesToChampion(g, championId) {
-  return !g.championIds.length || g.championIds.includes(championId);
+function guidesForChampion(guides, championId) {
+  return guides.filter((g) => g.enabled && (!g.championIds.length || g.championIds.includes(championId)));
 }
 
-function matchingGuides(guides, championId, pickedAugmentIds) {
-  return guides.filter(
-    (g) =>
-      g.enabled &&
-      guideAppliesToChampion(g, championId) &&
-      (g.augmentIds.length ? g.augmentIds.some((id) => pickedAugmentIds.includes(id)) : g.championIds.length > 0)
-  );
-}
-
-module.exports = { GuideStore, matchingGuides, guideAppliesToChampion };
+module.exports = { GuideStore, guidesForChampion };

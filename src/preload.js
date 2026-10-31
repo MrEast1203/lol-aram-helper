@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   deleteGuide: (id) => invoke('guides:delete', id),
   exportGuides: () => invoke('guides:export'),
   importGuides: () => invoke('guides:import'),
-  setPicked: (ids) => invoke('game:setPicked', ids),
+  hideOffers: () => invoke('scan:hide'),
   refreshData: () => invoke('data:refresh'),
   clearCache: () => invoke('data:clearCache'),
   testScan: () => invoke('detector:test'),

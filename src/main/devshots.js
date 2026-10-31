@@ -1,4 +1,5 @@
 // Dev-only: ARAM_SHOTS=<dir> walks the dashboard tabs and saves a screenshot of each.
+// With ARAM_SIM it also captures the overlay during and after a scan.
 const fs = require('fs');
 const path = require('path');
 
@@ -12,14 +13,27 @@ const STEPS = [
   ['settings', `document.getElementById('modal').classList.add('hidden'); document.querySelector('[data-tab=settings]').click()`],
 ];
 
-async function runDevShots(win, dir) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function shot(win, dir, name) {
+  const img = await win.webContents.capturePage();
+  fs.writeFileSync(path.join(dir, `${name}.png`), img.toPNG());
+}
+
+async function runDevShots(win, dir, overlay) {
   fs.mkdirSync(dir, { recursive: true });
-  await new Promise((r) => setTimeout(r, 2500));
+  await sleep(2500);
+  if (overlay && process.env.ARAM_SIM) {
+    await overlay.webContents.executeJavaScript('void window.api.manualScan()').catch(() => {});
+    await sleep(80);
+    await shot(overlay, dir, 'overlay-scanning');
+    await sleep(1500);
+    await shot(overlay, dir, 'overlay-result');
+  }
   for (const [name, js] of STEPS) {
     await win.webContents.executeJavaScript(js).catch((e) => console.warn('[devshots]', name, e.message));
-    await new Promise((r) => setTimeout(r, 1500));
-    const img = await win.webContents.capturePage();
-    fs.writeFileSync(path.join(dir, `${name}.png`), img.toPNG());
+    await sleep(1500);
+    await shot(win, dir, name);
   }
   console.log('[devshots] done');
   if (process.env.ARAM_SHOTS_QUIT) require('electron').app.quit();

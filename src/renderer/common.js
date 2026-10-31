@@ -168,13 +168,8 @@ export function summarizeBuild(b) {
   };
 }
 
-export function matchingGuides(guides, championId, picked) {
-  return guides.filter(
-    (g) =>
-      g.enabled &&
-      (!g.championIds.length || g.championIds.includes(championId)) &&
-      (g.augmentIds.length ? g.augmentIds.some((id) => picked.includes(id)) : g.championIds.length > 0)
-  );
+export function guidesForChampion(guides, championId) {
+  return guides.filter((g) => g.enabled && (!g.championIds.length || g.championIds.includes(championId)));
 }
 
 export function guidesForAugment(guides, championId, augmentId) {

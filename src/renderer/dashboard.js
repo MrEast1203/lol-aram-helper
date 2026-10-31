@@ -1,6 +1,6 @@
 // Main window: status, tier lists, custom guide editor and settings.
-import { api, h, pct, num, tierBadge, stripHtml, RARITY, loadDb, augmentInfo } from './common.js';
-import { buildPanel, buildBlock, guideBox } from './buildview.js';
+import { api, h, pct, num, tierBadge, stripHtml, RARITY, loadDb } from './common.js';
+import { buildPanel, buildBlock, guideBox, guidesPanel } from './buildview.js';
 
 let db = await loadDb();
 let state = await api.getState();
@@ -10,7 +10,8 @@ let tab = 'overview';
 const ui = { champSearch: '', champSel: null, augSearch: '', augRarity: '', augOpen: null, guideSel: null, draft: null, scan: null, scanning: false };
 
 const view = document.getElementById('view');
-const PHASES = { None: '首頁', Lobby: '房間', Matchmaking: '配對中', ReadyCheck: '接受對戰', ChampSelect: '選角中', GameStart: '遊戲載入', InProgress: '遊戲中', WaitingForStats: '等待結算', PreEndOfGame: '結算', EndOfGame: '結算', Reconnect: '重新連線' };
+const HOTKEYS = ['F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'Insert', 'Home', 'PageUp', 'Backquote'];
+const PHASES = { None:'首頁', Lobby: '房間', Matchmaking: '配對中', ReadyCheck: '接受對戰', ChampSelect: '選角中', GameStart: '遊戲載入', InProgress: '遊戲中', WaitingForStats: '等待結算', PreEndOfGame: '結算', EndOfGame: '結算', Reconnect: '重新連線' };
 
 document.querySelectorAll('#nav button[data-tab]').forEach((b) =>
   b.addEventListener('click', () => {
@@ -222,36 +223,12 @@ function renderOverview() {
             db.champIcon(game.championId, 40),
             h('b', null, db.champ(game.championId)?.name || game.alias || '—'),
             h('span', { class: 'tag' }, game.gameMode || ''),
-            h('span', { class: 'muted' }, `等級 ${game.level} · 待選海克斯 ${game.pending}`),
+            h('span', { class: 'muted' }, `等級 ${game.level}`),
             s.gameWindow ? h('span', { class: 'muted' }, s.gameWindow.foreground ? '視窗在前景' : '視窗在背景') : h('span', { class: 'muted' }, '找不到遊戲視窗')
           ),
-          h('div', { class: 'muted' }, '本局已選海克斯（從你點選的卡片偵測；錯誤時可在此手動修正）：'),
-          h(
-            'div',
-            { class: 'row' },
-            game.picked.map((id) =>
-              h(
-                'span',
-                { class: 'chip' },
-                db.augIcon(id, 24),
-                db.aug(id)?.name || id,
-                h('button', { title: '移除', onclick: () => api.setPicked(game.picked.filter((x) => x !== id)) }, '✕')
-              )
-            ),
-            h(
-              'button',
-              {
-                onclick: () =>
-                  openPicker({
-                    title: '新增本局海克斯',
-                    entries: augEntries(),
-                    filters: augFilters,
-                    onDone: ([id]) => api.setPicked([...game.picked, id]),
-                  }),
-              },
-              '＋ 新增'
-            )
-          )
+          s.offers.length
+            ? h('div', { class: 'row' }, h('span', { class: 'muted' }, '畫面上的海克斯：'), s.offers.map((o) => h('span', { class: 'chip' }, db.augIcon(o.augmentId, 22), db.aug(o.augmentId)?.name || o.augmentId)))
+            : null
         )
       : h('div', { class: 'muted' }, '目前不在遊戲中。')
   );
@@ -262,12 +239,12 @@ function renderOverview() {
     'div',
     { class: 'card col' },
     h('h3', null, '海克斯偵測（Windows OCR）'),
-    h('div', { class: 'muted' }, `遊戲中在海克斯選擇畫面按 ${settings.scanHotkey} 或點左側「🔍 掃描海克斯」按鈕；死亡/復活/開局時也會自動掃描。`),
+    h('div', { class: 'muted' }, `遊戲中在海克斯選擇畫面按 ${settings.scanHotkey}（或點左側「🔍 掃描海克斯」按鈕）顯示 tier；重抽後再按一次更新；按 ${settings.hideHotkey} 隱藏。`),
     h(
       'div',
       { class: 'kv' },
       h('span', null, '狀態'),
-      h('span', null, { visible: '追蹤選擇畫面中', manual: '手動掃描中', dead: '死亡中，自動掃描', respawn: '剛復活，自動掃描', start: '開局，自動掃描', idle: '閒置掃描' }[det.reason] || '待命'),
+      h('span', null, s.scan?.active ? `掃描中 ${s.scan.progress}/${s.scan.total}` : '待命'),
       h('span', null, '掃描次數'),
       h('span', null, num(det.scans)),
       h('span', null, '上次耗時'),
@@ -344,7 +321,7 @@ function renderOverview() {
       h('span', null, '今日 credits'),
       h('span', null, d.credits ? `剩餘 ${d.credits.remaining} / ${d.credits.daily}${d.credits.estimated ? '（估計）' : ''}` : '—'),
       h('span', null, '已快取英雄'),
-      h('span', null, `${d.cachedChampions} / ${db.champions.length}${d.prefetching ? '（背景預載中）' : ''}`)
+      h('span', null, `${d.cachedChampions} / ${db.champions.length}（${d.gamePatch || ''} 版本內有效${d.prefetching ? '，背景預載中' : ''}）`)
     ),
     h('div', { class: 'row' }, h('button', { onclick: () => api.refreshData() }, d.loading ? '更新中…' : '檢查更新'), h('button', { class: 'danger', onclick: () => confirm('清除所有快取並重新下載？會消耗 credits。') && api.clearCache() }, '清除快取'))
   );
@@ -376,7 +353,13 @@ function renderOverview() {
   let preview = null;
   if (game?.championId) {
     const detail = cachedDetail(game.championId);
-    preview = h('div', { class: 'card' }, h('h3', null, 'Tab 面板預覽'), buildPanel(db, { championId: game.championId, detail, guides, picked: game.picked, buildsShown: settings.buildsShown, stale: detail?.stale }));
+    preview = h(
+      'div',
+      { class: 'card col' },
+      h('h3', null, 'Tab 面板預覽'),
+      guidesPanel(db, guides, game.championId, s.offers.map((o) => o.augmentId)),
+      buildPanel(db, { championId: game.championId, detail, buildsShown: settings.buildsShown, stale: detail?.stale })
+    );
   }
 
   return h('div', { class: 'col', style: { gap: '12px' } }, warnings, h('div', { class: 'grid2' }, lcuCard, gameCard, detectorCard, dataCard, historyCard, preview));
@@ -461,7 +444,7 @@ function champDetailView(id) {
   return h(
     'div',
     { class: 'col', style: { gap: '12px' } },
-    h('div', { class: 'card' }, buildPanel(db, { championId: id, detail, guides, buildsShown: 1, stale: detail.stale })),
+    h('div', { class: 'card col' }, guidesPanel(db, guides, id), buildPanel(db, { championId: id, detail, buildsShown: 1, stale: detail.stale })),
     (detail.builds || []).length > 1 ? h('div', { class: 'card col' }, h('h3', null, '其他流派'), detail.builds.slice(1).map((b, i) => buildBlock(db, b, i + 1))) : null,
     (detail.augmentTrios || []).length
       ? h('div', { class: 'card col' }, h('h3', null, '三海克斯組合'), detail.augmentTrios.map((t) => h('div', { class: 'row' }, t.augmentIds.map((a) => db.augIcon(a, 28)), h('span', { class: 'muted' }, `${pct(t.stats?.winRate)} · ${num(t.games)} 場`))))
@@ -643,14 +626,14 @@ function guideEditor(d) {
       h('h3', null, d.id ? '編輯攻略' : '新增攻略'),
       h('label', { class: 'col' }, h('span', { class: 'label' }, '名稱'), h('input', { value: d.name, placeholder: '例如：裝甲衝擊先出布甲', oninput: (e) => (d.name = e.target.value) })),
       h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: d.enabled, onchange: (e) => (d.enabled = e.target.checked) }), '啟用'),
-      h('div', { class: 'label' }, '觸發海克斯（選到任一個就顯示；不選則只要是指定英雄就顯示）'),
+      h('div', { class: 'label' }, '相關海克斯（選擇畫面出現這些海克斯時，卡片徽章會顯示 📘 提醒）'),
       h(
         'div',
         { class: 'row' },
         d.augmentIds.map((id) => h('span', { class: 'chip' }, db.augIcon(id, 26), db.aug(id)?.name || id, h('button', { onclick: () => set('augmentIds', d.augmentIds.filter((x) => x !== id)) }, '✕'))),
-        h('button', { onclick: () => openPicker({ title: '選擇觸發海克斯', entries: augEntries(), filters: augFilters, multi: true, selected: d.augmentIds, onDone: (ids) => set('augmentIds', ids) }) }, '＋ 選擇海克斯')
+        h('button', { onclick: () => openPicker({ title: '選擇相關海克斯', entries: augEntries(), filters: augFilters, multi: true, selected: d.augmentIds, onDone: (ids) => set('augmentIds', ids) }) }, '＋ 選擇海克斯')
       ),
-      h('div', { class: 'label' }, '適用英雄（不選 = 所有英雄）'),
+      h('div', { class: 'label' }, '適用英雄（不選 = 所有英雄）。按 Tab 時會一直顯示在適用英雄的攻略欄。'),
       h(
         'div',
         { class: 'row' },
@@ -773,16 +756,15 @@ function renderSettings() {
         ),
         field(
           '手動掃描快捷鍵',
-          h('select', { onchange: (e) => save({ scanHotkey: e.target.value }) }, ['F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'Insert', 'Home', 'PageUp', 'Backquote'].map((k) => h('option', { value: k, selected: s.scanHotkey === k }, k))),
-          '在海克斯選擇畫面按一下，掃描並持續追蹤直到選完。請選遊戲沒用到的鍵。'
+          h('select', { onchange: (e) => save({ scanHotkey: e.target.value }) }, HOTKEYS.map((k) => h('option', { value: k, selected: s.scanHotkey === k }, k))),
+          '在海克斯選擇畫面按一下顯示 tier；重抽後再按一次更新。請選遊戲沒用到的鍵。'
+        ),
+        field(
+          '隱藏 tier 快捷鍵',
+          h('select', { onchange: (e) => save({ hideHotkey: e.target.value }) }, HOTKEYS.map((k) => h('option', { value: k, selected: s.hideHotkey === k }, k)))
         ),
         field('遊戲內顯示掃描按鈕', check('scanButton'), '畫面左側的「🔍 掃描海克斯」按鈕，點擊不會搶走遊戲焦點。'),
         field('按鈕位置 (% X, Y)', h('div', { class: 'row' }, posInput('scanButtonX'), posInput('scanButtonY'))),
-        field('自動掃描', check('autoScan'), '有待選海克斯時，只在「死亡中、復活後回到泉水、開局」這些能選海克斯的時刻自動掃描。'),
-        field('海克斯等級', h('input', { value: s.augmentLevels.join(', '), onchange: (e) => save({ augmentLevels: e.target.value.split(/[,\s]+/).map(Number).filter((n) => n > 0) }) }), '用來計算待選海克斯數量。'),
-        field('復活後掃描秒數', h('input', { type: 'number', value: s.respawnScanMs / 1000, min: 0, style: { width: '120px' }, onchange: (e) => save({ respawnScanMs: Number(e.target.value) * 1000 }) })),
-        field('掃描間隔 (ms)', numInput('scanFastMs', { min: 250, step: 100 })),
-        field('閒置掃描間隔 (ms)', numInput('scanIdleMs', { min: 0, step: 500 }), '0 = 關閉（建議）。'),
         field('OCR 放大倍率', numInput('ocrScale', { min: 0.5, step: 0.25 }), '字太小辨識不到時可調 1.5。'),
         field('掃描範圍 (% of 遊戲畫面)', h('div', { class: 'row' }, 'X', regionInput('x'), 'Y', regionInput('y'), '寬', regionInput('w'), '高', regionInput('h'))),
         field(
@@ -828,7 +810,7 @@ api.onState((s) => {
   state = s;
   renderNav();
   if (tab !== 'overview') return;
-  const key = JSON.stringify([s.lcu, s.windowMode, s.champSelect, s.game && { ...s.game, gameTime: 0 }, s.gameWindow?.foreground, !!s.gameWindow, s.detector.scans >> 3, s.detector.lastError, s.detector.reason, s.data, s.history.length]);
+  const key = JSON.stringify([s.lcu, s.windowMode, s.champSelect, s.game && { ...s.game, gameTime: 0 }, s.gameWindow?.foreground, !!s.gameWindow, s.detector.scans >> 3, s.detector.lastError, s.scan, s.offers, s.data, s.history.length]);
   if (key !== lastOverviewKey) {
     lastOverviewKey = key;
     if (document.getElementById('modal').classList.contains('hidden')) render();
