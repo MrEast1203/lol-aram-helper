@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://cdn.dtodo.cn https://ddragon.leagueoflegends.com data: file:; style-src 'self' 'unsafe-inline'">
+<title>ARAM Helper</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="panel.css">
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+<nav id="nav">
+  <div class="brand"><img src="assets/icon.png" width="28" height="28" alt=""><span>ARAM Helper</span></div>
+  <button data-tab="overview" class="active">總覽</button>
+  <button data-tab="champions">英雄 Tier</button>
+  <button data-tab="augments">海克斯 Tier</button>
+  <button data-tab="guides">自訂攻略</button>
+  <button data-tab="settings">設定</button>
+  <div class="grow"></div>
+  <div id="navStatus" class="muted"></div>
+</nav>
+<main id="view"></main>
+<div id="modal" class="modal hidden"></div>
+<script type="module" src="dashboard.js"></script>
+</body>
+</html>

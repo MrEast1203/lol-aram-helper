@@ -1,0 +1,51 @@
+{
+  "name": "lol-aram-helper",
+  "productName": "ARAM Helper",
+  "version": "0.1.0",
+  "description": "LoL ARAM Mayhem overlay: champion tiers, augment tiers, builds and custom guides",
+  "main": "src/main/main.js",
+  "author": "Kan",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/",
+    "dist": "electron-builder --win portable nsis"
+  },
+  "dependencies": {
+    "uiohook-napi": "1.5.4"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "local.kan.aramhelper",
+    "productName": "ARAM Helper",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "src/main/helper.ps1",
+      "node_modules/uiohook-napi/**"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "ARAM-Helper-${version}-portable.exe"
+    }
+  }
+}

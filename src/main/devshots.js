@@ -1,0 +1,28 @@
+// Dev-only: ARAM_SHOTS=<dir> walks the dashboard tabs and saves a screenshot of each.
+const fs = require('fs');
+const path = require('path');
+
+const STEPS = [
+  ['overview', `document.querySelector('[data-tab=overview]').click()`],
+  ['champions', `document.querySelector('[data-tab=champions]').click(); setTimeout(() => document.querySelectorAll('tr.clickable')[0]?.click(), 100)`],
+  ['champion-266', `(() => { const i = document.querySelector('.toolbar input'); i.value = '厄薩斯'; i.dispatchEvent(new Event('input')); setTimeout(() => document.querySelector('tr.clickable')?.click(), 100); })()`],
+  ['augments', `document.querySelector('[data-tab=augments]').click()`],
+  ['guides', `document.querySelector('[data-tab=guides]').click(); setTimeout(() => document.querySelector('.guide-list .g')?.click(), 100)`],
+  ['item-picker', `[...document.querySelectorAll('button')].find((b) => b.textContent.includes('加入裝備'))?.click()`],
+  ['settings', `document.getElementById('modal').classList.add('hidden'); document.querySelector('[data-tab=settings]').click()`],
+];
+
+async function runDevShots(win, dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  await new Promise((r) => setTimeout(r, 2500));
+  for (const [name, js] of STEPS) {
+    await win.webContents.executeJavaScript(js).catch((e) => console.warn('[devshots]', name, e.message));
+    await new Promise((r) => setTimeout(r, 1500));
+    const img = await win.webContents.capturePage();
+    fs.writeFileSync(path.join(dir, `${name}.png`), img.toPNG());
+  }
+  console.log('[devshots] done');
+  if (process.env.ARAM_SHOTS_QUIT) require('electron').app.quit();
+}
+
+module.exports = { runDevShots };

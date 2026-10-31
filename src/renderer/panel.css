@@ -1,0 +1,12 @@
+/* Build panel styles (overlay, champ select, dashboard). */
+.build-panel { gap: 10px; }
+.panel-head .champ-name { font-size: 15px; color: var(--gold2); }
+.section { color: var(--gold); font-weight: 700; font-size: 12px; letter-spacing: 1px; border-bottom: 1px solid var(--line); padding-bottom: 3px; }
+.build { gap: 5px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.build:last-child { border-bottom: none; }
+.build-head b { color: var(--gold2); }
+.skill-prio { color: #ffd166; font-weight: 700; }
+.skill-seq { display: inline-flex; gap: 1px; }
+.sk { display: inline-block; width: 15px; text-align: center; font-size: 11px; border-radius: 2px; background: #1a2333; }
+.sk-Q { color: #7dd3fc; } .sk-W { color: #86efac; } .sk-E { color: #fca5a5; } .sk-R { color: #0b0f17; background: var(--gold); }
+.picked-aug { align-items: center; gap: 2px; }

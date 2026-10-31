@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://cdn.dtodo.cn https://ddragon.leagueoflegends.com data:; style-src 'self' 'unsafe-inline'">
+<title>ARAM Helper Overlay</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="panel.css">
+<style>
+  html, body { background: transparent !important; overflow: hidden; width: 100vw; height: 100vh; user-select: none; }
+  #badges, #toast, #tab { position: absolute; }
+  .badge {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    background: rgba(8, 12, 20, 0.88);
+    border: 2px solid var(--t5);
+    border-radius: 8px;
+    padding: 4px 10px;
+    white-space: nowrap;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,.6);
+  }
+  .badge .main { display: flex; align-items: center; gap: 8px; justify-content: center; font-size: 15px; font-weight: 700; }
+  .badge .tier { font-size: 15px; }
+  .badge .sub { font-size: 11px; color: var(--muted); }
+  .badge .best { color: #ffd166; font-size: 12px; }
+  .badge .guide { color: var(--gold2); font-size: 12px; margin-top: 2px; }
+  .badge.b1 { border-color: var(--t1); } .badge.b2 { border-color: var(--t2); } .badge.b3 { border-color: var(--t3); } .badge.b4 { border-color: var(--t4); }
+  .badge.top { box-shadow: 0 0 14px rgba(255, 209, 102, .7); }
+  #toast { top: 12%; left: 50%; transform: translateX(-50%); background: rgba(8,12,20,.9); border: 1px solid var(--gold); color: var(--gold2); padding: 8px 18px; border-radius: 8px; font-size: 15px; display: none; }
+  #tab { display: none; max-height: calc(100vh - 140px); overflow: hidden; }
+  #tab .build-panel { background: rgba(8, 12, 20, 0.92); border: 1px solid var(--gold); border-radius: 10px; padding: 12px; }
+</style>
+</head>
+<body>
+<div id="badges"></div>
+<div id="tab"></div>
+<div id="toast"></div>
+<script type="module" src="overlay.js"></script>
+</body>
+</html>

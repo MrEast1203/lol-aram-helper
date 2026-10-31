@@ -1,0 +1,47 @@
+html, body { height: 100%; background: var(--bg); }
+body { display: flex; flex-direction: column; overflow: hidden; }
+nav { display: flex; align-items: center; gap: 4px; padding: 8px 14px; background: var(--bg2); border-bottom: 1px solid var(--line); }
+nav .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--gold2); font-size: 15px; margin-right: 16px; }
+nav button { background: transparent; border-color: transparent; }
+nav button.active { border-color: var(--gold); color: var(--gold2); }
+#navStatus { font-size: 12px; }
+main { flex: 1; overflow: auto; padding: 16px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+.status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.status-dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.status-dot.warn { background: #f59e0b; }
+.warn-box { border: 1px solid #b45309; background: rgba(245, 158, 11, 0.1); border-radius: 8px; padding: 10px; color: #fde68a; }
+.kv { display: grid; grid-template-columns: 110px 1fr; gap: 4px 10px; }
+.kv > :nth-child(odd) { color: var(--muted); }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 400; position: sticky; top: 0; background: var(--bg); cursor: pointer; }
+tr.clickable:hover td { background: var(--bg2); cursor: pointer; }
+tr.selected td { background: var(--bg3); }
+.split { display: grid; grid-template-columns: minmax(380px, 1fr) minmax(420px, 1.2fr); gap: 14px; height: 100%; }
+.split > .scroll { min-height: 0; }
+.toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.desc { white-space: pre-line; color: #c9d1dc; font-size: 12px; max-width: 520px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 2px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg3); }
+.chip button { padding: 0 6px; border: none; background: transparent; color: var(--muted); }
+.guide-list .g { padding: 8px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
+.guide-list .g.sel { border-color: var(--gold); background: var(--bg2); }
+.guide-list .g.off { opacity: 0.5; }
+.seq { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 48px; padding: 6px; border: 1px dashed var(--line); border-radius: 8px; }
+.seq .slot { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.seq .slot .ctl { display: flex; gap: 1px; }
+.seq .slot .ctl button { padding: 0 4px; font-size: 11px; }
+.seq .slot .idx { position: absolute; top: -4px; left: -4px; background: var(--gold); color: #000; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; text-align: center; line-height: 16px; font-weight: 700; }
+.modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 10; }
+.modal.hidden { display: none; }
+.modal .box { width: min(860px, 92vw); max-height: 84vh; display: flex; flex-direction: column; gap: 10px; background: var(--bg2); border: 1px solid var(--gold); border-radius: 12px; padding: 14px; }
+.picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; overflow-y: auto; }
+.picker .p { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; text-align: center; font-size: 11px; }
+.picker .p:hover { border-color: var(--line); background: var(--bg3); }
+.picker .p.on { border-color: var(--gold); background: rgba(200, 170, 110, 0.12); }
+.history td { vertical-align: middle; }
+.win { color: #4ade80; } .loss { color: #f87171; }
+pre.scan { white-space: pre-wrap; font-size: 11px; background: var(--bg); padding: 8px; border-radius: 6px; max-height: 220px; overflow: auto; }
+.setting { display: grid; grid-template-columns: 220px 1fr; gap: 8px 14px; align-items: center; }
+.setting .hint { grid-column: 2; color: var(--muted); font-size: 12px; margin-top: -4px; }
+.setting input[type='checkbox'] { justify-self: start; }
