@@ -47,6 +47,7 @@ function renderBadges() {
           h('span', null, pct(info.winRate))
         ),
         info.scope === 'champion' && info.games ? h('div', { class: 'sub' }, `此英雄 ${info.games} 場 · 選取 ${pct(info.pickRate)}`) : null,
+        o.inferred ? h('div', { class: 'guess' }, `推測：${db.aug(o.augmentId)?.name || ''}`) : null,
         g.length ? h('div', { class: 'guide' }, '📘 ' + g.map((x) => x.name).join('、')) : null
       )
     );
@@ -78,6 +79,24 @@ function renderTab() {
   );
 }
 
+// The overlay is click-through; it becomes clickable only while the button is hovered.
+const scanBtn = document.getElementById('scanBtn');
+scanBtn.addEventListener('mouseenter', () => api.setOverlayInteractive(true));
+scanBtn.addEventListener('mouseleave', () => api.setOverlayInteractive(false));
+scanBtn.addEventListener('click', () => api.manualScan());
+
+function renderScanButton() {
+  const show = !!state.game && settings.scanButton;
+  if (!show) {
+    if (scanBtn.style.display !== 'none') api.setOverlayInteractive(false);
+    scanBtn.style.display = 'none';
+    return;
+  }
+  Object.assign(scanBtn.style, { display: 'block', left: `${settings.scanButtonX * 100}vw`, top: `${settings.scanButtonY * 100}vh` });
+  scanBtn.classList.toggle('busy', !!state.scanSession);
+  scanBtn.textContent = state.scanSession ? '🔍 掃描中…' : `🔍 掃描海克斯 (${settings.scanHotkey})`;
+}
+
 function renderToast() {
   const el = document.getElementById('toast');
   if (state.toast) {
@@ -90,12 +109,13 @@ let lastKey = '';
 async function render() {
   await ensureDetail();
   // Avoid rebuilding the DOM on every live-data tick.
-  const key = JSON.stringify([state.offers, state.tabHeld, state.game?.championId, state.game?.picked, state.toast, detailFor, !!detail]);
+  const key = JSON.stringify([state.offers, state.tabHeld, state.game?.championId, state.game?.picked, state.toast, state.scanSession, !!state.game, detailFor, !!detail]);
   if (key === lastKey) return;
   lastKey = key;
   renderBadges();
   renderTab();
   renderToast();
+  renderScanButton();
 }
 
 api.onState((s) => {

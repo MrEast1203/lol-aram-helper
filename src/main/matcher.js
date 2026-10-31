@@ -28,13 +28,16 @@ function levenshtein(a, b) {
 function buildMatcher(augments) {
   const entries = [];
   const exact = new Map();
+  const byId = new Map();
   for (const a of augments) {
     const norm = normalize(a.name);
     if (norm.length < 2) continue;
-    entries.push({ id: a.id, norm, len: norm.length });
+    const e = { id: a.id, norm, len: norm.length, rarity: a.rarityName || null };
+    entries.push(e);
+    byId.set(a.id, e);
     if (!exact.has(norm)) exact.set(norm, a.id);
   }
-  return { entries, exact };
+  return { entries, exact, byId };
 }
 
 // Best augment for one text segment, or null.
@@ -92,6 +95,51 @@ function findCandidates(matcher, lines) {
   return out;
 }
 
+const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+const centerX = (b) => b.x + b.w / 2;
+
+// All cards on one screen share a rarity. Once some titles are matched, other text
+// segments on the same title row are matched loosely against that rarity only.
+function completeRow(matcher, lines, strong, { maxCards = 3 } = {}) {
+  if (!strong.length || strong.length >= maxCards) return strong;
+  const th = median(strong.map((o) => o.box.h));
+  const rowY = strong.reduce((s, o) => s + o.box.y + o.box.h / 2, 0) / strong.length;
+  const counts = new Map();
+  for (const o of strong) {
+    const r = matcher.byId.get(o.augmentId)?.rarity;
+    counts.set(r, (counts.get(r) || 0) + 1);
+  }
+  const rarity = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const taken = new Set(strong.map((o) => o.augmentId));
+  const pool = matcher.entries.filter((e) => e.rarity === rarity && !taken.has(e.id));
+  const guesses = [];
+  for (const line of lines || []) {
+    for (const seg of splitSegments(line)) {
+      const cy = seg.box.y + seg.box.h / 2;
+      if (Math.abs(cy - rowY) > th * 0.7 || seg.box.h < th * 0.6 || seg.box.h > th * 1.7) continue;
+      const t = normalize(seg.text);
+      if (!t) continue;
+      let best = null;
+      let second = null;
+      for (const e of pool) {
+        const sim = 1 - levenshtein(t, e.norm) / Math.max(t.length, e.len);
+        if (!best || sim > best.sim) [best, second] = [{ id: e.id, sim }, best];
+        else if (!second || sim > second.sim) second = { id: e.id, sim };
+      }
+      if (best && best.sim >= 0.5 && (!second || best.sim - second.sim >= 0.15)) guesses.push({ augmentId: best.id, score: best.sim * 0.8, text: seg.text, box: seg.box, inferred: true });
+    }
+  }
+  const result = [...strong];
+  // Best guesses first; one augment per card column.
+  for (const g of guesses.sort((a, b) => b.score - a.score)) {
+    if (result.length >= maxCards || taken.has(g.augmentId)) continue;
+    if (result.some((o) => Math.abs(centerX(o.box) - centerX(g.box)) < th * 4)) continue;
+    result.push(g);
+    taken.add(g.augmentId);
+  }
+  return result.sort((a, b) => a.box.x - b.box.x);
+}
+
 // Group candidates into rows; the selection screen is the row with the most distinct augments.
 function detectOffers(matcher, lines, { minMatches = 2, rowTolerance = 30 } = {}) {
   const cands = findCandidates(matcher, lines);
@@ -110,8 +158,9 @@ function detectOffers(matcher, lines, { minMatches = 2, rowTolerance = 30 } = {}
     const total = items.reduce((s, c) => s + c.score, 0);
     if (!best || items.length > best.items.length || (items.length === best.items.length && total > best.total)) best = { items, total };
   }
-  const offers = best && best.items.length >= minMatches ? best.items : [];
+  const items = best ? completeRow(matcher, lines, best.items) : [];
+  const offers = items.length >= minMatches ? items : [];
   return { offers, candidates: cands };
 }
 
-module.exports = { normalize, levenshtein, buildMatcher, matchText, splitSegments, findCandidates, detectOffers };
+module.exports = { normalize, levenshtein, buildMatcher, matchText, splitSegments, findCandidates, completeRow, detectOffers };

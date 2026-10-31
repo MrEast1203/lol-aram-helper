@@ -23,13 +23,15 @@ class Controller extends EventEmitter {
       gameWindow: null,
       clientWindow: null,
       tabHeld: false,
+      scanSession: false,
       toast: null,
-      detector: { scans: 0, lastMs: null, lastError: null, lastScanAt: null },
+      detector: { scans: 0, lastMs: null, lastError: null, lastScanAt: null, reason: null },
       data: data.status(),
       history: this.loadHistory(),
     };
     this.liveFailures = 0;
     this.lastVersionCheck = 0;
+    this.windowTicks = 0;
     this.champSelectChampion = null;
   }
 
@@ -60,7 +62,12 @@ class Controller extends EventEmitter {
     this.data.on('tables', (t) => this.detector.setAugments(t.augments));
     if (this.data.tables) this.detector.setAugments(this.data.tables.augments);
 
-    this.detector.on('offers', (offers) => this.patch({ offers: offers.map((o) => this.offerToView(o)) }));
+    this.detector.on('offers', (offers) => {
+      if (offers.length) this.sessionSawOffers = true;
+      // The screen closed after being read: the manual scan session is done.
+      else if (this.sessionSawOffers) this.endScanSession();
+      this.patch({ offers: offers.map((o) => this.offerToView(o)) });
+    });
     this.detector.on('picked', (id) => this.addPicked(id, true));
 
     this.input.on('tab', (down) => {
@@ -69,6 +76,9 @@ class Controller extends EventEmitter {
       this.patch({ tabHeld: down && !!this.state.game && fg });
     });
     this.input.on('click', (x, y) => this.detector.onMouseDown(x, y));
+    this.input.on('scanHotkey', () => {
+      if (this.state.game && this.state.gameWindow?.foreground !== false) this.manualScan();
+    });
 
     this.lcu.start();
     this.liveTimer = setInterval(() => this.liveTick(), 1500);
@@ -87,7 +97,7 @@ class Controller extends EventEmitter {
   // Set by main.js: converts physical screen px to overlay-relative DIP.
   offerToView(o) {
     const r = this.toOverlayRect ? this.toOverlayRect(o.box) : o.box;
-    return { augmentId: o.augmentId, score: o.score, ...r };
+    return { augmentId: o.augmentId, score: o.score, inferred: !!o.inferred, ...r };
   }
 
   // ---------- LCU ----------
@@ -234,6 +244,7 @@ class Controller extends EventEmitter {
     const { player, championId, alias } = this.resolveChampion(all);
     const level = all.activePlayer.level || player?.level || 1;
     const liveAugments = extractLiveAugments(all.activePlayer);
+    if (player?.isDead) this.lastDeadAt = Date.now();
     if (!this.state.game) {
       this.detector.reset();
       this.patch({
@@ -300,6 +311,11 @@ class Controller extends EventEmitter {
 
   async windowTick() {
     try {
+      // The window-mode warning must follow changes made in the game's settings.
+      if (++this.windowTicks % 10 === 0) {
+        const windowMode = this.lcu.readWindowMode();
+        if (windowMode !== this.state.windowMode) this.patch({ windowMode });
+      }
       if (this.state.game && !this.sim) {
         const w = await this.native.findWindow(GAME_WINDOW_CLASS, null);
         const gameWindow = w.found && !w.minimized && w.w > 0 ? { x: w.x, y: w.y, w: w.w, h: w.h, foreground: w.foreground } : null;
@@ -320,20 +336,97 @@ class Controller extends EventEmitter {
     this.scanTimer = setTimeout(() => this.scanTick(), ms);
   }
 
+  // Why a scan should run right now, or null. Augment screens only open while the
+  // shop is usable: dead, back in the fountain after respawning, or at game start.
+  scanReason(now) {
+    const s = this.settings.get();
+    const game = this.state.game;
+    if (this.state.offers.length) return 'visible';
+    if (now < (this.manualUntil || 0)) return 'manual';
+    if (s.autoScan && game.pending > 0) {
+      if (game.isDead) return 'dead';
+      if (now - (this.lastDeadAt || 0) < s.respawnScanMs) return 'respawn';
+      if (game.gameTime < s.gameStartScanSec) return 'start';
+    }
+    if (s.scanIdleMs && now - (this.lastIdleScan || 0) >= s.scanIdleMs) return 'idle';
+    return null;
+  }
+
   async scanTick() {
     const s = this.settings.get();
     const game = this.state.game;
     const win = this.state.gameWindow;
-    const urgent = game && (game.pending > 0 || this.state.offers.length > 0);
-    const interval = urgent ? s.scanFastMs : s.scanIdleMs;
-    if (!game || !win || !win.foreground || !this.detector.matcher || !interval) return this.scheduleScan(1000);
+    const now = Date.now();
+    const reason = game && win && win.foreground && this.detector.matcher ? this.scanReason(now) : null;
+    if (reason !== this.state.detector.reason) this.patch({ detector: { ...this.state.detector, reason } });
+    if (!reason) return this.scheduleScan(500);
+    if (reason === 'idle') this.lastIdleScan = now;
+    // Full sweep on a fresh manual scan, otherwise at most every 4s; in between only the title row.
+    const thorough = this.forceSweep || (reason !== 'visible' && now - (this.detector.lastSweep || 0) > 4000);
+    const save = this.forceSweep && !this.sim ? this.debugScanPath() : undefined;
+    this.forceSweep = false;
     try {
-      const r = await this.detector.scan(win, { file: this.sim });
-      this.patch({ detector: { scans: this.state.detector.scans + 1, lastMs: r.ms, lastError: null, lastScanAt: Date.now(), lastOffers: r.offers.length } });
+      const r = await this.detector.scan(win, { file: this.sim, thorough, save });
+      if (save) this.writeScanLog(save, r);
+      this.patch({ detector: { ...this.state.detector, scans: this.state.detector.scans + 1, lastMs: r.ms, lastError: null, lastScanAt: Date.now(), lastOffers: r.offers.length } });
     } catch (e) {
       this.patch({ detector: { ...this.state.detector, lastError: e.message } });
     }
-    this.scheduleScan(Math.max(250, interval));
+    this.scheduleScan(Math.max(250, s.scanFastMs));
+  }
+
+  // Hotkey / overlay button: scan now, keep scanning for a short session.
+  manualScan() {
+    if (!this.state.game) return;
+    const s = this.settings.get();
+    this.manualUntil = Date.now() + s.scanSessionMs;
+    this.forceSweep = true;
+    this.sessionSawOffers = false;
+    this.patch({ scanSession: true, toast: { text: '掃描海克斯中…', at: Date.now() } });
+    clearTimeout(this.sessionTimer);
+    this.sessionTimer = setTimeout(() => {
+      if (!this.sessionSawOffers) this.patch({ toast: { text: '沒有偵測到海克斯選擇畫面（截圖已存到掃描紀錄）', at: Date.now() } });
+      this.endScanSession();
+    }, s.scanSessionMs);
+    this.scheduleScan(0);
+  }
+
+  endScanSession() {
+    this.manualUntil = 0;
+    this.sessionSawOffers = false;
+    clearTimeout(this.sessionTimer);
+    if (this.state.scanSession) this.patch({ scanSession: false });
+  }
+
+  scanLogDir() {
+    return path.join(path.dirname(this.historyFile), 'scans');
+  }
+
+  debugScanPath() {
+    const dir = this.scanLogDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    return path.join(dir, `scan-${stamp}.png`);
+  }
+
+  // Saved next to the capture so detection problems can be diagnosed later. Keeps 10 scans.
+  writeScanLog(pngPath, r) {
+    const names = new Map((this.data.tables?.augments || []).map((a) => [a.id, a.name]));
+    const log = {
+      at: new Date().toISOString(),
+      rect: r.rect,
+      ms: r.ms,
+      offers: r.offers.map((o) => ({ id: o.augmentId, name: names.get(o.augmentId), text: o.text, inferred: !!o.inferred, box: o.box })),
+      lines: r.lines.map((l) => ({ text: l.text, box: l.words[0] && { x: l.words[0].x, y: l.words[0].y, h: l.words[0].h } })),
+    };
+    fs.promises
+      .writeFile(pngPath.replace(/\.png$/, '.json'), JSON.stringify(log, null, 1))
+      .then(() => fs.promises.readdir(this.scanLogDir()))
+      .then((files) => {
+        const pngs = files.filter((f) => f.endsWith('.png')).sort();
+        return Promise.all(pngs.slice(0, -10).flatMap((f) => [f, f.replace(/\.png$/, '.json')].map((x) => fs.promises.rm(path.join(this.scanLogDir(), x), { force: true }))));
+      })
+      .catch(() => {});
   }
 
   // Manual OCR test from the dashboard: an image file, the game window, or the primary screen.
@@ -341,13 +434,17 @@ class Controller extends EventEmitter {
   async testScan(fallbackRect, imagePath, { file, save } = {}) {
     if (!this.detector.matcher) throw new Error('海克斯資料尚未載入');
     let rect = fallbackRect;
+    let inGame = false;
     if (!file) {
       const w = await this.native.findWindow(GAME_WINDOW_CLASS, null).catch(() => ({ found: false }));
-      if (w.found && w.w > 0) rect = { x: w.x, y: w.y, w: w.w, h: w.h };
+      if (w.found && w.w > 0) {
+        rect = { x: w.x, y: w.y, w: w.w, h: w.h };
+        inGame = true;
+      }
     }
     const probe = new this.detector.constructor({ native: this.native, settings: this.settings, log: this.log });
     probe.matcher = this.detector.matcher;
-    const r = await probe.scan(rect, { save, file });
+    const r = await probe.scan(rect, { save, file, thorough: true, learn: inGame });
     const names = new Map((this.data.tables?.augments || []).map((a) => [a.id, a.name]));
     return {
       rect: r.rect,
@@ -355,7 +452,7 @@ class Controller extends EventEmitter {
       saved: imagePath,
       lines: r.lines.map((l) => l.text),
       candidates: r.candidates.map((c) => ({ id: c.augmentId, name: names.get(c.augmentId), text: c.text, score: +c.score.toFixed(2) })),
-      offers: r.offers.map((c) => ({ id: c.augmentId, name: names.get(c.augmentId) })),
+      offers: r.offers.map((c) => ({ id: c.augmentId, name: names.get(c.augmentId), inferred: !!c.inferred, text: c.text })),
     };
   }
 }

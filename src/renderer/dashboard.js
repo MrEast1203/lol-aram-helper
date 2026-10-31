@@ -225,7 +225,7 @@ function renderOverview() {
             h('span', { class: 'muted' }, `等級 ${game.level} · 待選海克斯 ${game.pending}`),
             s.gameWindow ? h('span', { class: 'muted' }, s.gameWindow.foreground ? '視窗在前景' : '視窗在背景') : h('span', { class: 'muted' }, '找不到遊戲視窗')
           ),
-          h('div', { class: 'muted' }, '本局已選海克斯（自動偵測；偵測錯誤時可在此手動修正）：'),
+          h('div', { class: 'muted' }, '本局已選海克斯（從你點選的卡片偵測；錯誤時可在此手動修正）：'),
           h(
             'div',
             { class: 'row' },
@@ -262,7 +262,19 @@ function renderOverview() {
     'div',
     { class: 'card col' },
     h('h3', null, '海克斯偵測（Windows OCR）'),
-    h('div', { class: 'kv' }, h('span', null, '掃描次數'), h('span', null, num(det.scans)), h('span', null, '上次耗時'), h('span', null, det.lastMs != null ? det.lastMs + ' ms' : '—'), h('span', null, '錯誤'), h('span', null, det.lastError || '無')),
+    h('div', { class: 'muted' }, `遊戲中在海克斯選擇畫面按 ${settings.scanHotkey} 或點左側「🔍 掃描海克斯」按鈕；死亡/復活/開局時也會自動掃描。`),
+    h(
+      'div',
+      { class: 'kv' },
+      h('span', null, '狀態'),
+      h('span', null, { visible: '追蹤選擇畫面中', manual: '手動掃描中', dead: '死亡中，自動掃描', respawn: '剛復活，自動掃描', start: '開局，自動掃描', idle: '閒置掃描' }[det.reason] || '待命'),
+      h('span', null, '掃描次數'),
+      h('span', null, num(det.scans)),
+      h('span', null, '上次耗時'),
+      h('span', null, det.lastMs != null ? det.lastMs + ' ms' : '—'),
+      h('span', null, '錯誤'),
+      h('span', null, det.lastError || '無')
+    ),
     h(
       'div',
       { class: 'row' },
@@ -294,7 +306,8 @@ function renderOverview() {
           },
         },
         '用截圖測試'
-      )
+      ),
+      h('button', { onclick: () => api.openScans() }, '掃描紀錄')
     ),
     h('div', { class: 'muted' }, '「立即測試」掃描遊戲視窗（不在遊戲中則掃描主螢幕）；「用截圖測試」可選一張海克斯選擇畫面的截圖。'),
     scan
@@ -305,7 +318,7 @@ function renderOverview() {
             { class: 'col' },
             h('div', null, `耗時 ${scan.ms} ms，辨識 ${scan.lines.length} 行，匹配 ${scan.candidates.length} 個海克斯名稱。`),
             scan.offers.length
-              ? h('div', { class: 'row' }, h('b', null, '偵測到選擇畫面：'), scan.offers.map((o) => h('span', { class: 'chip' }, db.augIcon(o.id, 22), o.name)))
+              ? h('div', { class: 'row' }, h('b', null, '偵測到選擇畫面：'), scan.offers.map((o) => h('span', { class: 'chip', title: `OCR：${o.text}` }, db.augIcon(o.id, 22), o.name, o.inferred ? h('span', { class: 'tag' }, '推測') : null)))
               : h('div', { class: 'muted' }, '沒有偵測到海克斯選擇畫面（需要同一排至少 ' + settings.minCardMatches + ' 張卡）。'),
             scan.candidates.length ? h('pre', { class: 'scan' }, scan.candidates.map((c) => `${c.name}  ← 「${c.text}」 (${c.score})`).join('\n')) : null,
             h('details', null, h('summary', { class: 'muted' }, 'OCR 原始文字'), h('pre', { class: 'scan' }, scan.lines.join('\n'))),
@@ -722,6 +735,7 @@ function renderSettings() {
   const field = (label, input, hint) => [h('span', null, label), input, hint ? h('div', { class: 'hint' }, hint) : null];
   const numInput = (key, opts = {}) => h('input', { type: 'number', value: s[key], step: opts.step || 1, min: opts.min, style: { width: '120px' }, onchange: (e) => save({ [key]: Number(e.target.value) }) });
   const check = (key) => h('input', { type: 'checkbox', checked: s[key], onchange: (e) => save({ [key]: e.target.checked }) });
+  const posInput = (key) => h('input', { type: 'number', value: +(s[key] * 100).toFixed(1), min: 0, max: 100, step: 0.5, style: { width: '80px' }, onchange: (e) => save({ [key]: Number(e.target.value) / 100 }) });
   const region = s.scanRegion;
   const regionInput = (k) =>
     h('input', { type: 'number', value: Math.round(region[k] * 100), min: 0, max: 100, style: { width: '70px' }, onchange: (e) => save({ scanRegion: { ...settings.scanRegion, [k]: Number(e.target.value) / 100 } }) });
@@ -757,11 +771,25 @@ function renderSettings() {
           h('select', { onchange: (e) => save({ ocrLang: e.target.value }) }, ['zh-Hant-TW', 'zh-Hant-HK', 'zh-Hans-CN', 'en-US', 'ja', 'ko'].map((l) => h('option', { value: l, selected: s.ocrLang === l }, l))),
           '需要 Windows 已安裝對應語言的 OCR。'
         ),
-        field('海克斯等級', h('input', { value: s.augmentLevels.join(', '), onchange: (e) => save({ augmentLevels: e.target.value.split(/[,\s]+/).map(Number).filter((n) => n > 0) }) }), '到達這些等級後會加快掃描，直到記錄到選擇。'),
-        field('快速掃描間隔 (ms)', numInput('scanFastMs', { min: 250, step: 100 })),
-        field('閒置掃描間隔 (ms)', numInput('scanIdleMs', { min: 0, step: 500 }), '0 = 只在待選海克斯時掃描。'),
+        field(
+          '手動掃描快捷鍵',
+          h('select', { onchange: (e) => save({ scanHotkey: e.target.value }) }, ['F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'Insert', 'Home', 'PageUp', 'Backquote'].map((k) => h('option', { value: k, selected: s.scanHotkey === k }, k))),
+          '在海克斯選擇畫面按一下，掃描並持續追蹤直到選完。請選遊戲沒用到的鍵。'
+        ),
+        field('遊戲內顯示掃描按鈕', check('scanButton'), '畫面左側的「🔍 掃描海克斯」按鈕，點擊不會搶走遊戲焦點。'),
+        field('按鈕位置 (% X, Y)', h('div', { class: 'row' }, posInput('scanButtonX'), posInput('scanButtonY'))),
+        field('自動掃描', check('autoScan'), '有待選海克斯時，只在「死亡中、復活後回到泉水、開局」這些能選海克斯的時刻自動掃描。'),
+        field('海克斯等級', h('input', { value: s.augmentLevels.join(', '), onchange: (e) => save({ augmentLevels: e.target.value.split(/[,\s]+/).map(Number).filter((n) => n > 0) }) }), '用來計算待選海克斯數量。'),
+        field('復活後掃描秒數', h('input', { type: 'number', value: s.respawnScanMs / 1000, min: 0, style: { width: '120px' }, onchange: (e) => save({ respawnScanMs: Number(e.target.value) * 1000 }) })),
+        field('掃描間隔 (ms)', numInput('scanFastMs', { min: 250, step: 100 })),
+        field('閒置掃描間隔 (ms)', numInput('scanIdleMs', { min: 0, step: 500 }), '0 = 關閉（建議）。'),
         field('OCR 放大倍率', numInput('ocrScale', { min: 0.5, step: 0.25 }), '字太小辨識不到時可調 1.5。'),
         field('掃描範圍 (% of 遊戲畫面)', h('div', { class: 'row' }, 'X', regionInput('x'), 'Y', regionInput('y'), '寬', regionInput('w'), '高', regionInput('h'))),
+        field(
+          '已學到的標題列位置',
+          h('div', { class: 'row' }, s.titleRowY != null ? `${(s.titleRowY * 100).toFixed(1)}%` : '尚未學到', s.titleRowY != null ? h('button', { onclick: () => save({ titleRowY: null }).then(render) }, '重設') : null),
+          '第一次偵測成功後會記住卡片標題的高度，之後只掃那一條，速度快很多。'
+        ),
         field('最少卡片匹配數', numInput('minCardMatches', { min: 1 }), '同一排至少辨識到幾張海克斯卡才算選擇畫面。'),
         field('徽章與名稱距離 (px)', numInput('badgeOffsetY')),
         field('截圖/錄影時隱藏覆蓋層', check('hideFromCapture'), '也讓 OCR 不會讀到自己的徽章，建議開啟。')
@@ -800,7 +828,7 @@ api.onState((s) => {
   state = s;
   renderNav();
   if (tab !== 'overview') return;
-  const key = JSON.stringify([s.lcu, s.windowMode, s.champSelect, s.game && { ...s.game, gameTime: 0 }, s.gameWindow?.foreground, !!s.gameWindow, s.detector.scans >> 3, s.detector.lastError, s.data, s.history.length]);
+  const key = JSON.stringify([s.lcu, s.windowMode, s.champSelect, s.game && { ...s.game, gameTime: 0 }, s.gameWindow?.foreground, !!s.gameWindow, s.detector.scans >> 3, s.detector.lastError, s.detector.reason, s.data, s.history.length]);
   if (key !== lastOverviewKey) {
     lastOverviewKey = key;
     if (document.getElementById('modal').classList.contains('hidden')) render();

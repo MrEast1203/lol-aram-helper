@@ -5,15 +5,22 @@ const { AugmentDetector } = require('../src/main/augmentDetector');
 const { matchingGuides } = require('../src/main/guides');
 
 const AUGS = [
-  { id: 1001, name: '泰坦的決意' },
-  { id: 3049, name: '裝甲衝擊' },
-  { id: 1028, name: '侵蝕裝甲' },
-  { id: 1030, name: '亮起來！' },
-  { id: 1040, name: '質變：稜鏡' },
-  { id: 1050, name: '衝鋒' },
-  { id: 1060, name: '巨人' },
+  { id: 1001, name: '泰坦的決意', rarityName: 'prismatic' },
+  { id: 3049, name: '裝甲衝擊', rarityName: 'gold' },
+  { id: 1028, name: '侵蝕裝甲', rarityName: 'silver' },
+  { id: 1030, name: '亮起來！', rarityName: 'gold' },
+  { id: 1040, name: '質變：稜鏡', rarityName: 'gold' },
+  { id: 1050, name: '衝鋒', rarityName: 'silver' },
+  { id: 1060, name: '巨人', rarityName: 'gold' },
+  { id: 1070, name: '蠻力重擊', rarityName: 'silver' },
+  { id: 1080, name: '急救箱', rarityName: 'silver' },
 ];
 const matcher = buildMatcher(AUGS);
+
+function mockSettings(extra = {}) {
+  let v = { scanRegion: { x: 0, y: 0, w: 1, h: 1 }, ocrLang: 'x', ocrScale: 1, minCardMatches: 2, titleRowY: null, ...extra };
+  return { get: () => v, set: (p) => (v = { ...v, ...p }) };
+}
 
 // Windows OCR returns CJK text as one "word" per character.
 function line(text, x, y, ch = 22) {
@@ -55,13 +62,52 @@ test('splits a merged OCR line into card titles', () => {
   );
 });
 
+test('row completion fills garbled titles from the same rarity', () => {
+  // Only the middle title reads cleanly; the others have OCR errors too heavy for strict matching.
+  const lines = [line('衝峰', 400, 500), line('侵蝕裝甲', 850, 500), line('急救稻', 1300, 502), line('對敵方英雄造成傷害時', 800, 560)];
+  const { offers } = detectOffers(matcher, lines, { minMatches: 2 });
+  assert.deepEqual(
+    offers.map((o) => [o.augmentId, !!o.inferred]),
+    [
+      [1050, true],
+      [1028, false],
+      [1080, true],
+    ]
+  );
+});
+
+test('row completion ignores other rarities and ambiguous text', () => {
+  // '巨入' (garbled gold 巨人) is not offered from the silver pool; 'xx' matches nothing.
+  const lines = [line('巨入', 400, 500), line('侵蝕裝甲', 850, 500), line('xx', 1300, 500)];
+  const { offers } = detectOffers(matcher, lines, { minMatches: 1 });
+  assert.deepEqual(
+    offers.map((o) => o.augmentId),
+    [1028]
+  );
+});
+
+test('detector learns the title row and then reads only that strip', async () => {
+  const settings = mockSettings();
+  const calls = [];
+  const lines = [line('泰坦的決意', 400, 500), line('裝甲衝擊', 850, 500), line('侵蝕裝甲', 1300, 500)];
+  const native = { ocr: async (rect, lang, opts) => (calls.push(opts.bands.length), { lines, ms: 1 }) };
+  const det = new AugmentDetector({ native, settings });
+  det.setAugments(AUGS);
+  const rect = { x: 0, y: 0, w: 1920, h: 1080 };
+  await det.scan(rect);
+  assert.ok(calls[0] > 1, 'first scan sweeps several strips');
+  assert.ok(Math.abs(settings.get().titleRowY - 511 / 1080) < 0.01);
+  await det.scan(rect);
+  assert.equal(calls[1], 1, 'then only the title strip');
+});
+
 test('a single stray match is not a selection screen', () => {
   const { offers } = detectOffers(matcher, [line('裝甲衝擊', 850, 500)], { minMatches: 2 });
   assert.equal(offers.length, 0);
 });
 
 test('detector records the clicked card when the screen closes', async () => {
-  const settings = { get: () => ({ scanRegion: { x: 0, y: 0, w: 1, h: 1 }, ocrLang: 'x', ocrScale: 1, minCardMatches: 2 }) };
+  const settings = mockSettings();
   let lines = [line('泰坦的決意', 400, 500), line('裝甲衝擊', 850, 500), line('侵蝕裝甲', 1300, 500)];
   const native = { ocr: async () => ({ lines, ms: 1 }) };
   const det = new AugmentDetector({ native, settings });
@@ -81,7 +127,7 @@ test('detector records the clicked card when the screen closes', async () => {
 });
 
 test('reroll keeps the same screen; next screen resolves the previous pick', async () => {
-  const settings = { get: () => ({ scanRegion: { x: 0, y: 0, w: 1, h: 1 }, ocrLang: 'x', ocrScale: 1, minCardMatches: 2 }) };
+  const settings = mockSettings();
   let lines = [line('泰坦的決意', 400, 500), line('裝甲衝擊', 850, 500), line('侵蝕裝甲', 1300, 500)];
   const det = new AugmentDetector({ native: { ocr: async () => ({ lines, ms: 1 }) }, settings });
   det.setAugments(AUGS);
@@ -100,7 +146,7 @@ test('reroll keeps the same screen; next screen resolves the previous pick', asy
 });
 
 test('clicking outside the cards (hide button) records nothing', async () => {
-  const settings = { get: () => ({ scanRegion: { x: 0, y: 0, w: 1, h: 1 }, ocrLang: 'x', ocrScale: 1, minCardMatches: 2 }) };
+  const settings = mockSettings();
   let lines = [line('泰坦的決意', 400, 500), line('裝甲衝擊', 850, 500)];
   const det = new AugmentDetector({ native: { ocr: async () => ({ lines, ms: 1 }) }, settings });
   det.setAugments(AUGS);

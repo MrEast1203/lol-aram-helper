@@ -75,7 +75,10 @@ class NativeHelper {
   }
 
   ocr(rect, lang, opts = {}) {
-    return this.call({ cmd: 'ocr', x: rect.x, y: rect.y, w: rect.w, h: rect.h, lang, scale: opts.scale || 1, save: opts.save, file: opts.file });
+    return this.call(
+      { cmd: 'ocr', x: rect.x, y: rect.y, w: rect.w, h: rect.h, lang, scale: opts.scale || 1, save: opts.save, file: opts.file, bands: opts.bands, thresholds: opts.thresholds },
+      30000
+    );
   }
   capture(rect, file) {
     return this.call({ cmd: 'capture', ...rect, save: file });

@@ -18,7 +18,8 @@ const { GuideStore } = require('./guides');
 const { GlobalInput } = require('./input');
 const { Controller } = require('./controller');
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// Simulation runs (ARAM_SIM) may start next to an installed copy.
+if (!process.env.ARAM_SIM && !app.requestSingleInstanceLock()) app.quit();
 
 const RENDERER = path.join(__dirname, '..', 'renderer');
 const PRELOAD = path.join(__dirname, '..', 'preload.js');
@@ -74,7 +75,9 @@ function createOverlay() {
     backgroundColor: '#00000000',
     webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
   });
-  overlay.setIgnoreMouseEvents(true);
+  // Click-through, but mouse moves are forwarded so the scan button can turn
+  // interactive while hovered. The window never takes focus from the game.
+  overlay.setIgnoreMouseEvents(true, { forward: true });
   overlay.setAlwaysOnTop(true, 'screen-saver');
   // Keeps our own badges out of the OCR capture (and out of recordings).
   overlay.setContentProtection(settings.get().hideFromCapture);
@@ -135,7 +138,10 @@ function layoutOverlay(state) {
   if (!overlay) return;
   const gw = state.gameWindow;
   if (!state.game || !gw) {
-    if (overlay.isVisible()) overlay.hide();
+    if (overlay.isVisible()) {
+      overlay.hide();
+      overlay.setIgnoreMouseEvents(true, { forward: true });
+    }
     lastOverlayBounds = null;
     return;
   }
@@ -179,15 +185,16 @@ function layoutChampPanel(state) {
 }
 
 let toastTimer;
+let toastAt = 0;
 function broadcast(state) {
   for (const w of [dashboard, overlay, champPanel]) if (w && !w.isDestroyed()) w.webContents.send('state', state);
   layoutOverlay(state);
   layoutChampPanel(state);
-  if (state.toast && !toastTimer) {
-    toastTimer = setTimeout(() => {
-      toastTimer = null;
-      controller.patch({ toast: null });
-    }, 3000);
+  // Each new toast gets its own 3s.
+  if (state.toast && state.toast.at !== toastAt) {
+    toastAt = state.toast.at;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => controller.patch({ toast: null }), 3000);
   }
 }
 
@@ -218,6 +225,12 @@ function registerIpc() {
     notifyData('guides');
   });
   ipcMain.handle('game:setPicked', (_e, ids) => controller.setPicked(ids));
+  ipcMain.handle('scan:manual', () => controller.manualScan());
+  ipcMain.handle('overlay:interactive', (_e, on) => overlay?.setIgnoreMouseEvents(!on, { forward: true }));
+  ipcMain.handle('app:openScans', () => {
+    require('fs').mkdirSync(controller.scanLogDir(), { recursive: true });
+    return shell.openPath(controller.scanLogDir());
+  });
   ipcMain.handle('data:refresh', () => data.checkVersion());
   ipcMain.handle('data:clearCache', () => data.clearCache().then(() => data.checkVersion()));
   ipcMain.handle('detector:testFile', async () => {
@@ -236,10 +249,18 @@ function registerIpc() {
     const p = screen.getPrimaryDisplay();
     const phys = screen.dipToScreenRect(null, p.bounds);
     const file = path.join(app.getPath('userData'), 'last-scan.png');
+    // During a game, get the dashboard out of the way so the capture shows the game.
+    const hide = !!controller.state.game && dashboard.isVisible();
+    if (hide) {
+      dashboard.hide();
+      await new Promise((r) => setTimeout(r, 400));
+    }
     try {
       return await controller.testScan({ x: phys.x, y: phys.y, w: phys.width, h: phys.height }, file, { save: file });
     } catch (e) {
       return { error: e.message };
+    } finally {
+      if (hide) dashboard.show();
     }
   });
   ipcMain.handle('lcu:applySpells', async (_e, a, b) => {
@@ -283,7 +304,7 @@ app.whenReady().then(async () => {
   lcu = new LcuClient({ native, settings, log });
   detector = new AugmentDetector({ native, settings, log });
   guides = new GuideStore(path.join(userData, 'guides.json'));
-  input = new GlobalInput(log);
+  input = new GlobalInput(log, () => settings.get().scanHotkey);
   controller = new Controller({ settings, data, lcu, native, detector, guides, input, historyFile: path.join(userData, 'history.json'), log });
   controller.toOverlayRect = overlayRect;
 

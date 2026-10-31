@@ -22,6 +22,14 @@ public static class AhNative {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  // BGRA in place: pixels brighter than threshold become black, the rest white.
+  public static void Binarize(byte[] px, int threshold) {
+    for (int i = 0; i + 3 < px.Length; i += 4) {
+      int l = (px[i] * 29 + px[i + 1] * 150 + px[i + 2] * 77) >> 8;
+      byte v = (byte)(l > threshold ? 0 : 255);
+      px[i] = v; px[i + 1] = v; px[i + 2] = v; px[i + 3] = 255;
+    }
+  }
 }
 "@
 [void][AhNative]::SetProcessDPIAware()
@@ -50,7 +58,7 @@ function Get-Engine([string]$lang) {
   $script:engines[$lang]
 }
 
-function Get-ScreenBitmap([int]$x, [int]$y, [int]$w, [int]$h, [double]$scale, [string]$file) {
+function Get-ScreenBitmap([int]$x, [int]$y, [int]$w, [int]$h, [string]$file) {
   $bmp = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $g = [System.Drawing.Graphics]::FromImage($bmp)
   if ($file) {
@@ -62,53 +70,73 @@ function Get-ScreenBitmap([int]$x, [int]$y, [int]$w, [int]$h, [double]$scale, [s
     $g.CopyFromScreen($x, $y, 0, 0, $bmp.Size)
   }
   $g.Dispose()
-  if ($scale -ne 1) {
-    $sw = [int]($w * $scale); $sh = [int]($h * $scale)
-    $scaled = New-Object System.Drawing.Bitmap($sw, $sh, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-    $g2 = [System.Drawing.Graphics]::FromImage($scaled)
-    $g2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-    $g2.DrawImage($bmp, 0, 0, $sw, $sh)
-    $g2.Dispose(); $bmp.Dispose()
-    $bmp = $scaled
-  }
   $bmp
 }
 
-function ConvertTo-SoftwareBitmap($bmp) {
+# Crops a horizontal strip and optionally upscales it.
+function Get-Strip($bmp, [int]$y, [int]$h, [double]$scale) {
+  $sw = [int]($bmp.Width * $scale); $sh = [int]($h * $scale)
+  $strip = New-Object System.Drawing.Bitmap($sw, $sh, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $g = [System.Drawing.Graphics]::FromImage($strip)
+  if ($scale -ne 1) { $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic }
+  $g.DrawImage($bmp, (New-Object System.Drawing.Rectangle(0, 0, $sw, $sh)), (New-Object System.Drawing.Rectangle(0, $y, $bmp.Width, $h)), [System.Drawing.GraphicsUnit]::Pixel)
+  $g.Dispose()
+  $strip
+}
+
+function ConvertTo-SoftwareBitmap($bmp, [int]$threshold) {
   $rect = New-Object System.Drawing.Rectangle(0, 0, $bmp.Width, $bmp.Height)
   $data = $bmp.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   try {
     $bytes = New-Object byte[] ($data.Stride * $bmp.Height)
     [System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $bytes, 0, $bytes.Length)
   } finally { $bmp.UnlockBits($data) }
+  if ($threshold -gt 0) { [AhNative]::Binarize($bytes, $threshold) }
   $buffer = [System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions]::AsBuffer($bytes)
   [Windows.Graphics.Imaging.SoftwareBitmap]::CreateCopyFromBuffer($buffer, [Windows.Graphics.Imaging.BitmapPixelFormat]::Bgra8, $bmp.Width, $bmp.Height)
 }
 
-function Invoke-Ocr($req) {
-  $sw = [System.Diagnostics.Stopwatch]::StartNew()
-  $scale = if ($req.scale) { [double]$req.scale } else { 1.0 }
-  $engine = Get-Engine $req.lang
-  $bmp = Get-ScreenBitmap $req.x $req.y $req.w $req.h $scale $req.file
-  try {
-    if ($req.save) { $bmp.Save($req.save, [System.Drawing.Imaging.ImageFormat]::Png) }
-    $sb = ConvertTo-SoftwareBitmap $bmp
-  } finally { $bmp.Dispose() }
+function Read-Lines($engine, $bmp, [int]$threshold, [int]$offX, [int]$offY, [double]$scale, $lines) {
+  $sb = ConvertTo-SoftwareBitmap $bmp $threshold
   $result = Await ($engine.RecognizeAsync($sb)) ([Windows.Media.Ocr.OcrResult])
   $sb.Dispose()
-  $lines = New-Object System.Collections.ArrayList
   foreach ($line in $result.Lines) {
     $words = New-Object System.Collections.ArrayList
     foreach ($word in $line.Words) {
       $r = $word.BoundingRect
       [void]$words.Add(@{
           t = $word.Text
-          x = [int]($req.x + $r.X / $scale); y = [int]($req.y + $r.Y / $scale)
+          x = [int]($offX + $r.X / $scale); y = [int]($offY + $r.Y / $scale)
           w = [int]($r.Width / $scale); h = [int]($r.Height / $scale)
         })
     }
     [void]$lines.Add(@{ text = $line.Text; words = $words })
   }
+}
+
+# Windows OCR loses text on busy full-screen game UI, but reads it reliably in
+# horizontal strips, so the region can be OCR'd as a list of bands ({y,h} relative
+# to the region). thresholds: 0 = as-is, >0 = binarize (bright text -> black on white).
+function Invoke-Ocr($req) {
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  $scale = if ($req.scale) { [double]$req.scale } else { 1.0 }
+  $engine = Get-Engine $req.lang
+  $thresholds = if ($req.thresholds) { @($req.thresholds) } else { @(0) }
+  $bands = if ($req.bands) { @($req.bands) } else { @(@{ y = 0; h = $req.h }) }
+  $bmp = Get-ScreenBitmap $req.x $req.y $req.w $req.h $req.file
+  $lines = New-Object System.Collections.ArrayList
+  try {
+    if ($req.save) { $bmp.Save($req.save, [System.Drawing.Imaging.ImageFormat]::Png) }
+    foreach ($band in $bands) {
+      $by = [Math]::Max(0, [int]$band.y)
+      $bh = [Math]::Min([int]$band.h, $bmp.Height - $by)
+      if ($bh -lt 8) { continue }
+      $strip = Get-Strip $bmp $by $bh $scale
+      try {
+        foreach ($t in $thresholds) { Read-Lines $engine $strip ([int]$t) $req.x ($req.y + $by) $scale $lines }
+      } finally { $strip.Dispose() }
+    }
+  } finally { $bmp.Dispose() }
   @{ lines = $lines; ms = $sw.ElapsedMilliseconds }
 }
 
@@ -151,7 +179,7 @@ while ($true) {
       'ping' { $res = @{ pong = $true } }
       'ocr' { $res = Invoke-Ocr $req }
       'capture' {
-        $bmp = Get-ScreenBitmap $req.x $req.y $req.w $req.h 1 $null
+        $bmp = Get-ScreenBitmap $req.x $req.y $req.w $req.h $null
         $bmp.Save($req.save, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
         $res = @{ saved = $req.save }
       }

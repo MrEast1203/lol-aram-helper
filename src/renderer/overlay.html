@@ -28,6 +28,14 @@
   .badge.b1 { border-color: var(--t1); } .badge.b2 { border-color: var(--t2); } .badge.b3 { border-color: var(--t3); } .badge.b4 { border-color: var(--t4); }
   .badge.top { box-shadow: 0 0 14px rgba(255, 209, 102, .7); }
   #toast { top: 12%; left: 50%; transform: translateX(-50%); background: rgba(8,12,20,.9); border: 1px solid var(--gold); color: var(--gold2); padding: 8px 18px; border-radius: 8px; font-size: 15px; display: none; }
+  #scanBtn {
+    position: absolute; display: none; padding: 6px 12px; border-radius: 18px; font-size: 13px; font-weight: 700;
+    color: var(--gold2); background: rgba(8, 12, 20, 0.55); border: 1px solid rgba(200, 170, 110, 0.5);
+    cursor: pointer; opacity: 0.6; transition: opacity .15s;
+  }
+  #scanBtn:hover { opacity: 1; background: rgba(8, 12, 20, 0.92); border-color: var(--gold); }
+  #scanBtn.busy { opacity: 1; border-color: var(--blue); color: var(--blue); }
+  .badge .guess { color: #f59e0b; font-size: 11px; }
   #tab { display: none; max-height: calc(100vh - 140px); overflow: hidden; }
   #tab .build-panel { background: rgba(8, 12, 20, 0.92); border: 1px solid var(--gold); border-radius: 10px; padding: 12px; }
 </style>
@@ -36,6 +44,7 @@
 <div id="badges"></div>
 <div id="tab"></div>
 <div id="toast"></div>
+<button id="scanBtn"></button>
 <script type="module" src="overlay.js"></script>
 </body>
 </html>
