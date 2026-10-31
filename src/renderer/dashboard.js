@@ -789,7 +789,7 @@ function renderSettings() {
         field('Tab 面板上邊距', numInput('tabPanelTop', { min: 0, step: 10 })),
         field('顯示流派數', numInput('buildsShown', { min: 1 })),
         field('選角時顯示側邊面板', check('champSelectPanel')),
-        field('關閉視窗時縮到系統匣', check('closeToTray')),
+        field('關閉視窗時縮到系統匣', check('closeToTray'), '不勾：關閉視窗就完全結束程式。勾選：程式留在系統匣，遊戲中的覆蓋層繼續運作。'),
         field('LoL 安裝路徑', h('input', { value: s.installPath, style: { width: '360px' }, onchange: (e) => save({ installPath: e.target.value }) }), '只會「讀取」lockfile 與 game.cfg，不會修改遊戲檔案。')
       )
     ),

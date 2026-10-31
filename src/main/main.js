@@ -70,11 +70,18 @@ function createDashboard() {
   });
   pipeConsole(dashboard, 'dashboard');
   dashboard.loadFile(path.join(RENDERER, 'dashboard.html'));
+  // Closing the main window quits the whole app (the hidden overlay windows would
+  // otherwise keep it alive), unless the user opted into hiding to the tray.
+  // Quit only after the close has finished: quitting from inside a cancelled
+  // 'close' makes Electron abort the quit.
   dashboard.on('close', (e) => {
-    if (!quitting && settings.get().closeToTray) {
-      e.preventDefault();
-      dashboard.hide();
-    }
+    if (quitting || !settings.get().closeToTray) return;
+    e.preventDefault();
+    dashboard.hide();
+  });
+  dashboard.on('closed', () => {
+    dashboard = null;
+    if (!quitting) app.quit();
   });
 }
 
@@ -365,9 +372,13 @@ app.on('second-instance', (_e, _argv, _cwd, other) => {
   if (dashboard) showDashboard();
 });
 app.on('before-quit', () => {
+  log.info('[app] before-quit');
   quitting = true;
   input?.stop();
+  log.info('[app] input stopped');
   controller?.stop();
   native?.stop();
+  log.info('[app] services stopped');
 });
+app.on('will-quit', () => log.info('[app] will-quit'));
 app.on('window-all-closed', () => {});
