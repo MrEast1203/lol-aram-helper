@@ -5,8 +5,10 @@ const path = require('path');
 const readline = require('readline');
 
 class NativeHelper {
-  constructor(log = console) {
+  // warmupLang(): OCR language to load as soon as the helper starts.
+  constructor(log = console, { warmupLang } = {}) {
     this.log = log;
+    this.warmupLang = warmupLang;
     this.proc = null;
     this.pending = new Map();
     this.nextId = 1;
@@ -36,6 +38,14 @@ class NativeHelper {
       this.ready = null;
     });
     this.ready = this.send({ cmd: 'ping' }, 60000);
+    // Without this the first F7 also pays for loading the recognizer.
+    const lang = this.warmupLang?.();
+    if (lang) {
+      this.ready
+        .then(() => this.send({ cmd: 'warmup', lang }, 30000))
+        .then((r) => this.log.info(`[helper] OCR ready (${lang}, ${r.ms} ms)`))
+        .catch((e) => this.log.warn('[helper] OCR warm-up failed:', e.message));
+    }
     return this.ready;
   }
 

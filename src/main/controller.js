@@ -68,7 +68,8 @@ class Controller extends EventEmitter {
       const fg = this.state.gameWindow?.foreground !== false;
       this.patch({ tabHeld: down && !!this.state.game && fg });
     });
-    this.input.on('hotkey', (action) => {
+    this.input.on('hotkey', async (action) => {
+      if (action === 'scan') await this.ensureGame();
       if (!this.state.game || this.state.gameWindow?.foreground === false) return;
       if (action === 'scan') this.manualScan();
       if (action === 'hide') this.hideOffers();
@@ -133,6 +134,7 @@ class Controller extends EventEmitter {
   }
 
   async onEndOfGame() {
+    if (this.sim) return; // the client may still hold the last real game's results
     const game = this.state.game;
     this.endGame();
     if (!game?.gameId) return;
@@ -200,19 +202,20 @@ class Controller extends EventEmitter {
     });
   }
 
-  async liveTick() {
-    if (this.liveBusy || this.sim) return;
+  // Returns the request already in flight, if any, so callers can wait for its result.
+  liveTick() {
+    if (this.sim) return;
     if (this.lcu.connected && NON_GAME_PHASES.has(this.state.lcu.phase) && !this.state.game) return;
-    this.liveBusy = true;
-    try {
-      const all = await requestJson(LIVE_URL, { timeout: 1200 });
-      this.liveFailures = 0;
-      this.onLiveData(all);
-    } catch {
-      if (this.state.game && ++this.liveFailures >= 4) this.endGame();
-    } finally {
-      this.liveBusy = false;
-    }
+    this.liveRequest ||= requestJson(LIVE_URL, { timeout: 1200 })
+      .then((all) => {
+        this.liveFailures = 0;
+        this.onLiveData(all);
+      })
+      .catch(() => {
+        if (this.state.game && ++this.liveFailures >= 4) this.endGame();
+      })
+      .finally(() => (this.liveRequest = null));
+    return this.liveRequest;
   }
 
   resolveChampion(all) {
@@ -261,6 +264,14 @@ class Controller extends EventEmitter {
     });
   }
 
+  // F7 right after the game loads can come before the polls above have noticed the game
+  // and its window; look both up now instead of ignoring the key.
+  async ensureGame() {
+    if (this.sim) return;
+    if (!this.state.game) await this.liveTick();
+    if (this.state.game && !this.state.gameWindow) await this.windowTick();
+  }
+
   endGame() {
     if (!this.state.game) return;
     this.patch({ game: null, offers: [], scan: null, tabHeld: false, gameWindow: null });
@@ -307,8 +318,9 @@ class Controller extends EventEmitter {
         save,
         onProgress: (progress, total) => this.patch({ scan: { active: true, progress, total, at: startedAt } }),
       });
-      if (save) this.writeScanLog(save, r);
       const ms = Date.now() - startedAt;
+      if (save) this.writeScanLog(save, r, ms);
+      this.log.info(`[scan] ${r.offers.length} offers in ${ms} ms (OCR ${r.ms} ms, ${r.swept ? 'full sweep' : 'title row'})`);
       this.patch({
         offers: r.offers.map((o) => this.offerToView(o)),
         scan: { active: false, found: r.offers.length, ms, at: Date.now() },
@@ -337,12 +349,15 @@ class Controller extends EventEmitter {
   }
 
   // Saved next to the capture so detection problems can be diagnosed later. Keeps 10 scans.
-  writeScanLog(pngPath, r) {
+  writeScanLog(pngPath, r, totalMs) {
     const names = new Map((this.data.tables?.augments || []).map((a) => [a.id, a.name]));
     const log = {
       at: new Date().toISOString(),
       rect: r.rect,
       ms: r.ms,
+      totalMs,
+      swept: r.swept,
+      titleRowY: this.settings.get().titleRowY,
       offers: r.offers.map((o) => ({ id: o.augmentId, name: names.get(o.augmentId), text: o.text, inferred: !!o.inferred, box: o.box })),
       lines: r.lines.map((l) => ({ text: l.text, box: l.words[0] && { x: l.words[0].x, y: l.words[0].y, h: l.words[0].h } })),
     };

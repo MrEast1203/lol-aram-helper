@@ -45,15 +45,18 @@
   #scanStatus .bar { height: 6px; margin: 6px 0 2px; background: #1a2333; border-radius: 3px; overflow: hidden; }
   #scanStatus .fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--gold)); transition: width .12s linear; }
   #scanStatus .meta { font-size: 11px; color: var(--muted); }
-  #tab, #guides { position: absolute; display: none; max-height: calc(100vh - 140px); overflow: hidden; }
-  #tab .build-panel, #guides .guides-panel { background: rgba(8, 12, 20, 0.92); border: 1px solid var(--gold); border-radius: 10px; padding: 12px; }
+  #tab, #guides { position: absolute; display: none; overflow-y: auto; border-radius: 10px; }
+  #tab .build-panel, #guides .guides-panel { background: rgba(8, 12, 20, 0.92); border: 1px solid var(--gold); border-radius: 10px; padding: 4px 12px 12px; }
+  .drag-bar { cursor: move; text-align: center; font-size: 11px; letter-spacing: 2px; color: var(--muted); padding: 2px 0 4px; margin: 0 -12px; border-bottom: 1px solid var(--line); }
+  .drag-bar:hover, .dragging .drag-bar { color: var(--gold2); background: rgba(200, 170, 110, 0.12); }
+  .dragging { opacity: 0.85; }
   .guide-box.hot { border-color: #ffd166; box-shadow: 0 0 10px rgba(255, 209, 102, .5); }
 </style>
 </head>
 <body>
 <div id="badges"></div>
-<div id="tab"></div>
-<div id="guides"></div>
+<div id="tab" class="interactive"></div>
+<div id="guides" class="interactive"></div>
 <div id="scanStatus"></div>
 <div id="toast"></div>
 <button id="scanBtn" class="interactive"></button>

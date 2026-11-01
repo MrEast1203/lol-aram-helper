@@ -794,9 +794,18 @@ function renderSettings() {
       h(
         'div',
         { class: 'setting' },
-        field('Tab 面板位置', h('select', { onchange: (e) => save({ tabPanelSide: e.target.value }) }, h('option', { value: 'right', selected: s.tabPanelSide === 'right' }, '右側'), h('option', { value: 'left', selected: s.tabPanelSide === 'left' }, '左側'))),
+        field(
+          'Tab 面板位置',
+          h(
+            'div',
+            { class: 'row' },
+            h('select', { onchange: (e) => save({ tabPanelSide: e.target.value }) }, h('option', { value: 'right', selected: s.tabPanelSide === 'right' }, '出裝在右側'), h('option', { value: 'left', selected: s.tabPanelSide === 'left' }, '出裝在左側')),
+            Object.keys(s.tabPanelPos || {}).length ? h('button', { onclick: () => save({ tabPanelPos: {} }).then(render) }, '重設拖曳位置') : null
+          ),
+          '遊戲中按住 Tab，拖曳面板頂端的「⠿ 拖曳移動」即可移動並記住位置；雙擊它回到預設位置。'
+        ),
         field('Tab 面板寬度', numInput('tabPanelWidth', { min: 280, step: 10 })),
-        field('Tab 面板上邊距', numInput('tabPanelTop', { min: 0, step: 10 })),
+        field('Tab 面板上邊距（預設位置）', numInput('tabPanelTop', { min: 0, step: 10 })),
         field('選角時顯示側邊面板', check('champSelectPanel')),
         field('關閉視窗時縮到系統匣', check('closeToTray'), '不勾：關閉視窗就完全結束程式。勾選：程式留在系統匣，遊戲中的覆蓋層繼續運作。'),
         field('LoL 安裝路徑', h('input', { value: s.installPath, style: { width: '360px' }, onchange: (e) => save({ installPath: e.target.value }) }), '只會「讀取」lockfile 與 game.cfg，不會修改遊戲檔案。')

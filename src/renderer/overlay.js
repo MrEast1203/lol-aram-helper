@@ -59,27 +59,76 @@ function renderTab() {
   const builds = document.getElementById('tab');
   const guideEl = document.getElementById('guides');
   if (!state.tabHeld || !state.game) {
+    endDrag();
     builds.style.display = guideEl.style.display = 'none';
     return;
   }
-  const w = settings.tabPanelWidth;
-  const side = (left) => ({ display: 'block', width: w + 'px', top: settings.tabPanelTop + 'px', left: left ? '16px' : `calc(100vw - ${w + 16}px)` });
-  Object.assign(builds.style, side(settings.tabPanelSide === 'left'));
   const championId = state.game.championId;
-  builds.replaceChildren(
-    buildPanel(db, {
-      championId,
-      detail,
-      stale: detail?.stale,
-      choice: settings.buildChoice?.[championId],
-      onSelectBuild: (_i, tag) => api.setSettings({ buildChoice: { ...settings.buildChoice, [championId]: tag } }),
-    })
-  );
-  const panel = guidesPanel(db, guides, state.game.championId, (state.offers || []).map((o) => o.augmentId));
-  if (panel) {
-    Object.assign(guideEl.style, side(settings.tabPanelSide !== 'left'));
-    guideEl.replaceChildren(panel);
+  const panel = buildPanel(db, {
+    championId,
+    detail,
+    stale: detail?.stale,
+    choice: settings.buildChoice?.[championId],
+    onSelectBuild: (_i, tag) => api.setSettings({ buildChoice: { ...settings.buildChoice, [championId]: tag } }),
+  });
+  panel.prepend(dragBar('builds'));
+  builds.replaceChildren(panel);
+  if (drag?.key !== 'builds') placePanel('builds', builds);
+  const gPanel = guidesPanel(db, guides, championId, (state.offers || []).map((o) => o.augmentId));
+  if (gPanel) {
+    gPanel.prepend(dragBar('guides'));
+    guideEl.replaceChildren(gPanel);
+    if (drag?.key !== 'guides') placePanel('guides', guideEl);
   } else guideEl.style.display = 'none';
+}
+
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+const PANELS = { builds: 'tab', guides: 'guides' };
+
+// Puts a Tab panel where it was dragged to, else on its default side.
+function placePanel(key, el) {
+  const w = settings.tabPanelWidth;
+  const pos = settings.tabPanelPos?.[key];
+  const onLeft = (settings.tabPanelSide === 'left') === (key === 'builds');
+  const x = clamp(pos ? pos.x * innerWidth : onLeft ? 16 : innerWidth - w - 16, 0, innerWidth - w);
+  const y = clamp(pos ? pos.y * innerHeight : settings.tabPanelTop, 0, innerHeight - 60);
+  Object.assign(el.style, { display: 'block', width: w + 'px', left: x + 'px', top: y + 'px', maxHeight: innerHeight - y - 12 + 'px' });
+}
+
+function dragBar(key) {
+  return h('div', { class: 'drag-bar', title: '拖曳移動 · 雙擊回到預設位置', onmousedown: (e) => startDrag(e, key), ondblclick: () => savePanelPos(key, null) }, '⠿ 拖曳移動');
+}
+
+// Dragging a panel's top bar moves it; the spot is saved as fractions of the game window.
+let drag = null;
+function startDrag(e, key) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const el = document.getElementById(PANELS[key]);
+  drag = { key, el, dx: e.clientX - el.offsetLeft, dy: e.clientY - el.offsetTop };
+  el.classList.add('dragging');
+  api.setOverlayDragging(true);
+}
+document.addEventListener('mousemove', (e) => {
+  if (!drag) return;
+  const x = clamp(e.clientX - drag.dx, 0, innerWidth - drag.el.offsetWidth);
+  const y = clamp(e.clientY - drag.dy, 0, innerHeight - 60);
+  Object.assign(drag.el.style, { left: x + 'px', top: y + 'px', maxHeight: innerHeight - y - 12 + 'px' });
+});
+document.addEventListener('mouseup', () => endDrag());
+function endDrag() {
+  if (!drag) return;
+  const { key, el } = drag;
+  drag = null;
+  el.classList.remove('dragging');
+  api.setOverlayDragging(false);
+  savePanelPos(key, { x: +(el.offsetLeft / innerWidth).toFixed(4), y: +(el.offsetTop / innerHeight).toFixed(4) });
+}
+function savePanelPos(key, pos) {
+  const all = { ...settings.tabPanelPos };
+  if (pos) all[key] = pos;
+  else delete all[key];
+  return api.setSettings({ tabPanelPos: all });
 }
 
 // Progress while scanning, then a short result line.
@@ -108,24 +157,34 @@ function renderScanStatus() {
   }
 }
 
-// The overlay is click-through. Mouse moves are still forwarded to it, so it turns
-// clickable exactly while the cursor is over an `.interactive` element (scan button,
-// build picker) and goes back to click-through as soon as it is not, including when
-// that element is removed or hidden under the cursor.
-let interactive = false;
-let mouse = null;
-function updateInteractive() {
-  const el = mouse ? document.elementFromPoint(mouse.x, mouse.y) : null;
-  const want = !!el?.closest('.interactive');
-  if (want !== interactive) {
-    interactive = want;
-    api.setOverlayInteractive(want);
-  }
+// The overlay is click-through. The main process makes it clickable while the cursor is
+// over one of these rects: every visible `.interactive` element (scan button, Tab panels).
+// They are re-sent whenever the page changes: a panel shown, moved, or grown by the build
+// picker opening.
+let lastRegions = '';
+let regionsQueued = false;
+function reportRegions() {
+  regionsQueued = false;
+  if (drag) return; // the panel follows the cursor; endDrag reports the final spot
+  const rects = [...document.querySelectorAll('.interactive')]
+    .filter((el) => el.offsetParent)
+    .map((el) => el.getBoundingClientRect())
+    .filter((r) => r.width && r.height)
+    .map((r) => ({ x: Math.floor(r.left), y: Math.floor(r.top), w: Math.ceil(r.width), h: Math.ceil(r.height) }));
+  const key = JSON.stringify(rects);
+  if (key === lastRegions) return;
+  lastRegions = key;
+  api.setOverlayRegions(rects);
 }
-document.addEventListener('mousemove', (e) => {
-  mouse = { x: e.clientX, y: e.clientY };
-  updateInteractive();
-});
+function queueRegions() {
+  if (regionsQueued) return;
+  regionsQueued = true;
+  setTimeout(reportRegions, 0);
+}
+new MutationObserver(queueRegions).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style'] });
+const resizes = new ResizeObserver(queueRegions);
+for (const id of ['tab', 'guides', 'scanBtn']) resizes.observe(document.getElementById(id));
+window.addEventListener('resize', queueRegions);
 
 const scanBtn = document.getElementById('scanBtn');
 scanBtn.addEventListener('click', () => api.manualScan());
@@ -162,8 +221,6 @@ async function render() {
   renderToast();
   renderScanButton();
   renderScanStatus();
-  // The element under the cursor may have just appeared or disappeared.
-  updateInteractive();
 }
 
 api.onState((s) => {

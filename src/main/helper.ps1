@@ -1,6 +1,6 @@
 # ARAM Helper native bridge.
 # Reads one JSON request per line on stdin, writes one JSON response per line on stdout.
-# Commands: ping, ocr, capture, win, lcu, langs
+# Commands: ping, warmup, ocr, capture, win, lcu, langs
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
@@ -49,6 +49,7 @@ function Await($op, [Type]$type) {
 }
 
 $script:engines = @{}
+$script:afterReply = $null
 function Get-Engine([string]$lang) {
   if (-not $script:engines.ContainsKey($lang)) {
     $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Globalization.Language]::new($lang))
@@ -125,8 +126,8 @@ function Invoke-Ocr($req) {
   $bands = if ($req.bands) { @($req.bands) } else { @(@{ y = 0; h = $req.h }) }
   $bmp = Get-ScreenBitmap $req.x $req.y $req.w $req.h $req.file
   $lines = New-Object System.Collections.ArrayList
+  $keep = $false
   try {
-    if ($req.save) { $bmp.Save($req.save, [System.Drawing.Imaging.ImageFormat]::Png) }
     $done = 0
     foreach ($band in $bands) {
       $by = [Math]::Max(0, [int]$band.y)
@@ -143,8 +144,36 @@ function Invoke-Ocr($req) {
         [Console]::Out.Flush()
       }
     }
-  } finally { $bmp.Dispose() }
+    # The scan-log PNG (~50ms to encode) is written after the reply; see the main loop.
+    if ($req.save) { $script:afterReply = @{ bmp = $bmp; path = $req.save }; $keep = $true }
+  } finally { if (-not $keep) { $bmp.Dispose() } }
   @{ lines = $lines; ms = $sw.ElapsedMilliseconds }
+}
+
+# Loads the recognizer and runs the whole OCR path once on a small generated image,
+# so the first real scan is as fast as the later ones.
+function Invoke-Warmup($req) {
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  $engine = Get-Engine $req.lang
+  $shot = Get-ScreenBitmap 0 0 16 16 $null
+  $shot.Dispose()
+  $bmp = New-Object System.Drawing.Bitmap(360, 60, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $lines = New-Object System.Collections.ArrayList
+  try {
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.Clear([System.Drawing.Color]::Black)
+    $font = New-Object System.Drawing.Font('Segoe UI', 22)
+    $g.DrawString('ARAM Helper 2400', $font, [System.Drawing.Brushes]::White, 8, 8)
+    $font.Dispose(); $g.Dispose()
+    $strip = Get-Strip $bmp 0 $bmp.Height 1.0
+    try {
+      foreach ($t in 0, 180) { Read-Lines $engine $strip $t 0 0 1.0 $lines }
+    } finally { $strip.Dispose() }
+    $ms = New-Object System.IO.MemoryStream
+    $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+    $ms.Dispose()
+  } finally { $bmp.Dispose() }
+  @{ lines = $lines.Count; ms = $sw.ElapsedMilliseconds }
 }
 
 function Get-WindowInfo($req) {
@@ -184,6 +213,7 @@ while ($true) {
     $id = $req.id
     switch ($req.cmd) {
       'ping' { $res = @{ pong = $true } }
+      'warmup' { $res = Invoke-Warmup $req }
       'ocr' { $res = Invoke-Ocr $req }
       'capture' {
         $bmp = Get-ScreenBitmap $req.x $req.y $req.w $req.h $null
@@ -201,4 +231,9 @@ while ($true) {
   }
   [Console]::Out.WriteLine(($res | ConvertTo-Json -Compress -Depth 8))
   [Console]::Out.Flush()
+  if ($script:afterReply) {
+    try { $script:afterReply.bmp.Save($script:afterReply.path, [System.Drawing.Imaging.ImageFormat]::Png) } catch { }
+    $script:afterReply.bmp.Dispose()
+    $script:afterReply = $null
+  }
 }

@@ -91,7 +91,10 @@ class AugmentDetector {
     const cy = strong.reduce((sum, o) => sum + o.box.y + o.box.h / 2, 0) / strong.length;
     const frac = +((cy - gameRect.y) / gameRect.h).toFixed(4);
     const prev = this.settings.get().titleRowY;
-    if (prev == null || Math.abs(prev - frac) > 0.006) this.settings.set({ titleRowY: frac });
+    if (prev == null || Math.abs(prev - frac) > 0.006) {
+      this.settings.set({ titleRowY: frac });
+      this.log.info(`[detector] title row learned at ${frac} (was ${prev})`);
+    }
   }
 }
 

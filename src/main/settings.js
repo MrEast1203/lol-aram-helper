@@ -30,6 +30,7 @@ const DEFAULTS = {
   tabPanelSide: 'right',
   tabPanelWidth: 380,
   tabPanelTop: 90,
+  tabPanelPos: {}, // {builds|guides: {x, y}} dragged top-left corner, as fractions of the game window
   // Build shown per champion: { [championId]: build tag }, picked in the build dropdown.
   buildChoice: {},
   hideFromCapture: true,

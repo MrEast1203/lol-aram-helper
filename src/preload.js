@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const invoke = (ch, ...args) => ipcRenderer.invoke(ch, ...args);
+const send = (ch, ...args) => ipcRenderer.send(ch, ...args);
 
 contextBridge.exposeInMainWorld('api', {
   getState: () => invoke('state:get'),
@@ -19,7 +20,8 @@ contextBridge.exposeInMainWorld('api', {
   testScan: () => invoke('detector:test'),
   testScanFile: () => invoke('detector:testFile'),
   manualScan: () => invoke('scan:manual'),
-  setOverlayInteractive: (on) => invoke('overlay:interactive', on),
+  setOverlayRegions: (rects) => send('overlay:regions', rects),
+  setOverlayDragging: (on) => send('overlay:drag', on),
   openScans: () => invoke('app:openScans'),
   applySpells: (a, b) => invoke('lcu:applySpells', a, b),
   openExternal: (url) => invoke('app:openExternal', url),

@@ -37,6 +37,22 @@ async function runDevShots(win, dir, overlay, champPanel) {
     await overlay.webContents.executeJavaScript(`document.querySelector('#tab .build-select .bs-head')?.click()`).catch(() => {});
     await sleep(400);
     await shot(overlay, dir, 'overlay-build-dropdown');
+    // Drag the builds panel 500px left / 200px down, capture, then restore the default spot.
+    await overlay.webContents
+      .executeJavaScript(
+        `(() => {
+          const bar = document.querySelector('#tab .drag-bar');
+          const r = bar.getBoundingClientRect();
+          const fire = (el, type, x, y) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 }));
+          fire(bar, 'mousedown', r.left + 30, r.top + 6);
+          fire(document, 'mousemove', r.left - 470, r.top + 206);
+          fire(document, 'mouseup', r.left - 470, r.top + 206);
+        })()`
+      )
+      .catch((e) => console.warn('[devshots] drag', e.message));
+    await sleep(600);
+    await shot(overlay, dir, 'overlay-dragged');
+    await overlay.webContents.executeJavaScript('window.api.setSettings({ tabPanelPos: {} })').catch(() => {});
   }
   for (const [name, js] of STEPS) {
     await win.webContents.executeJavaScript(js).catch((e) => console.warn('[devshots]', name, e.message));

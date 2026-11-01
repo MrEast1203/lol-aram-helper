@@ -43,7 +43,8 @@ async function acquireSingleInstance() {
 const RENDERER = path.join(__dirname, '..', 'renderer');
 const PRELOAD = path.join(__dirname, '..', 'preload.js');
 const ICON = path.join(__dirname, '..', 'renderer', 'assets', 'icon.png');
-const log = console;
+const { createLog } = require('./log');
+const log = createLog(path.join(app.getPath('userData'), 'app.log'));
 
 let settings, data, native, lcu, detector, guides, input, controller;
 let dashboard, overlay, champPanel, tray;
@@ -101,9 +102,8 @@ function createOverlay() {
     backgroundColor: '#00000000',
     webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
   });
-  // Click-through, but mouse moves are forwarded so the scan button can turn
-  // interactive while hovered. The window never takes focus from the game.
-  overlay.setIgnoreMouseEvents(true, { forward: true });
+  // Click-through is set in layoutOverlay once the window is shown (see there).
+  // The window never takes focus from the game.
   overlay.setAlwaysOnTop(true, 'screen-saver');
   // Keeps our own badges out of the OCR capture (and out of recordings).
   overlay.setContentProtection(settings.get().hideFromCapture);
@@ -159,27 +159,71 @@ function physToDip(rect) {
   return screen.screenToDipRect(null, rect);
 }
 
+// The overlay is click-through except while the cursor is over one of the rects its page
+// reports (scan button, Tab panels) or a panel is being dragged. The cursor is polled
+// here rather than relying on mouse moves being forwarded to the click-through page.
+const overlayMouse = { regions: [], dragging: false, interactive: false, timer: null };
+const overlayAlive = () => !!overlay && !overlay.isDestroyed();
+
+function setOverlayInteractive(on) {
+  if (!overlayAlive() || !overlay.isVisible() || on === overlayMouse.interactive) return;
+  overlayMouse.interactive = on;
+  overlay.setIgnoreMouseEvents(!on, { forward: true });
+  if (process.env.ARAM_DEBUG_MOUSE) log.info('[overlay] interactive', on);
+}
+
+function pollOverlayMouse() {
+  const m = overlayMouse;
+  // Also stops once the window is gone (while quitting).
+  if (!overlayAlive() || !overlay.isVisible() || (!m.dragging && !m.regions.length)) {
+    setOverlayInteractive(false);
+    clearInterval(m.timer);
+    m.timer = null;
+    return;
+  }
+  if (m.dragging) return setOverlayInteractive(true);
+  const p = screen.getCursorScreenPoint();
+  const b = overlay.getBounds();
+  const x = p.x - b.x;
+  const y = p.y - b.y;
+  setOverlayInteractive(m.regions.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h));
+}
+
+function watchOverlayMouse() {
+  if (!overlayMouse.timer) overlayMouse.timer = setInterval(pollOverlayMouse, 30);
+  pollOverlayMouse();
+}
+
 let lastOverlayBounds = null;
 function layoutOverlay(state) {
-  if (!overlay) return;
+  if (!overlayAlive()) return;
   const gw = state.gameWindow;
   if (!state.game || !gw) {
+    overlayMouse.dragging = false;
     if (overlay.isVisible()) {
+      setOverlayInteractive(false);
       overlay.hide();
-      overlay.setIgnoreMouseEvents(true, { forward: true });
     }
+    pollOverlayMouse();
     lastOverlayBounds = null;
     return;
   }
   const bounds = physToDip({ x: gw.x, y: gw.y, width: gw.w, height: gw.h });
   const key = JSON.stringify(bounds);
-  if (key !== lastOverlayBounds) {
+  if (!overlay.isVisible()) {
+    // Order matters: with content protection on, a window that is made click-through
+    // or resized while hidden stays unclickable outside its old size, which left the
+    // Tab panel's build picker unclickable. So: show, then size, then click-through.
+    overlay.showInactive();
+    overlay.setBounds(bounds);
+    lastOverlayBounds = key;
+    overlayMouse.interactive = false;
+    overlay.setIgnoreMouseEvents(true, { forward: true });
+    overlay.setAlwaysOnTop(true, 'screen-saver');
+    watchOverlayMouse();
+  } else if (key !== lastOverlayBounds) {
     lastOverlayBounds = key;
     overlay.setBounds(bounds);
-  }
-  if (!overlay.isVisible()) {
-    overlay.showInactive();
-    overlay.setAlwaysOnTop(true, 'screen-saver');
   }
 }
 
@@ -252,7 +296,15 @@ function registerIpc() {
   });
   ipcMain.handle('scan:manual', () => controller.manualScan());
   ipcMain.handle('scan:hide', () => controller.hideOffers());
-  ipcMain.handle('overlay:interactive', (_e, on) => overlay?.setIgnoreMouseEvents(!on, { forward: true }));
+  ipcMain.on('overlay:regions', (_e, rects) => {
+    overlayMouse.regions = Array.isArray(rects) ? rects : [];
+    if (process.env.ARAM_DEBUG_MOUSE) log.info('[overlay] regions', JSON.stringify(overlayMouse.regions));
+    watchOverlayMouse();
+  });
+  ipcMain.on('overlay:drag', (_e, on) => {
+    overlayMouse.dragging = !!on;
+    watchOverlayMouse();
+  });
   ipcMain.handle('app:openScans', () => {
     require('fs').mkdirSync(controller.scanLogDir(), { recursive: true });
     return shell.openPath(controller.scanLogDir());
@@ -327,7 +379,7 @@ app.whenReady().then(async () => {
   const userData = app.getPath('userData');
   settings = new Settings(path.join(userData, 'settings.json'), [process.cwd(), path.dirname(process.execPath), path.join(app.getAppPath(), '..')]);
   data = new DataStore({ dir: path.join(userData, 'aram-data'), settings, log });
-  native = new NativeHelper(log);
+  native = new NativeHelper(log, { warmupLang: () => settings.get().ocrLang });
   lcu = new LcuClient({ native, settings, log });
   detector = new AugmentDetector({ native, settings, log });
   guides = new GuideStore(path.join(userData, 'guides.json'));
@@ -374,6 +426,7 @@ app.on('second-instance', (_e, _argv, _cwd, other) => {
 app.on('before-quit', () => {
   log.info('[app] before-quit');
   quitting = true;
+  clearInterval(overlayMouse.timer);
   input?.stop();
   log.info('[app] input stopped');
   controller?.stop();
