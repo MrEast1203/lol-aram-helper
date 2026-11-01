@@ -65,7 +65,7 @@ function createDashboard() {
     minHeight: 600,
     title: 'ARAM Helper',
     icon: ICON,
-    backgroundColor: '#0b0f17',
+    backgroundColor: '#111114',
     autoHideMenuBar: true,
     webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false },
   });
@@ -120,7 +120,7 @@ function createChampPanel() {
     skipTaskbar: true,
     alwaysOnTop: true,
     show: false,
-    backgroundColor: '#0b0f17',
+    backgroundColor: '#111114',
     webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false },
   });
   champPanel.setAlwaysOnTop(true, 'floating');

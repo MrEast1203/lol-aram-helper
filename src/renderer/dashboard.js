@@ -78,7 +78,7 @@ function openPicker({ title, entries, multi = false, selected = [], filters = []
     h(
       'div',
       { class: 'box' },
-      h('div', { class: 'row' }, h('b', { style: { color: 'var(--gold2)' } }, title), search),
+      h('div', { class: 'row' }, h('b', { style: { color: 'var(--brand-light)' } }, title), search),
       filters.length
         ? h(
             'div',

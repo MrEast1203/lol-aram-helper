@@ -76,7 +76,7 @@ async function render(fetchViewing = false) {
         'div',
         { class: 'row' },
         db.champIcon(id, 52),
-        h('div', { class: 'col grow', style: { gap: '2px' } }, h('b', { style: { fontSize: '16px', color: 'var(--gold2)' } }, champ?.name || '—'), h('span', { class: 'muted' }, champ?.title || '')),
+        h('div', { class: 'col grow', style: { gap: '2px' } }, h('b', { style: { fontSize: '16px', color: 'var(--brand-light)' } }, champ?.name || '—'), h('span', { class: 'muted' }, champ?.title || '')),
         h('div', { class: 'col', style: { alignItems: 'flex-end', gap: '3px' } }, tierBadge(champ?.stats?.tier), h('span', { class: 'muted' }, `排名 #${db.champRank.get(id) || '—'}/${db.champions.length}`))
       ),
       h('div', { class: 'row muted' }, `勝率 ${pct(champ?.stats?.winRate)} · 選取率 ${pct(champ?.stats?.pickRate)}`, id !== myId ? h('span', { class: 'tag' }, '板凳/隊友') : null)
