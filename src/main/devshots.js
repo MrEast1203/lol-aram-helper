@@ -11,6 +11,7 @@ const STEPS = [
   ['guides', `document.querySelector('[data-tab=guides]').click(); setTimeout(() => document.querySelector('.guide-list .g')?.click(), 100)`],
   ['item-picker', `[...document.querySelectorAll('button')].find((b) => b.textContent.includes('加入裝備'))?.click()`],
   ['settings', `document.getElementById('modal').classList.add('hidden'); document.querySelector('[data-tab=settings]').click()`],
+  ['settings-about', `document.getElementById('view').scrollTop = 99999`],
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -1,11 +1,11 @@
 {
   "name": "lol-aram-helper",
   "productName": "ARAM Helper",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "LoL ARAM Mayhem overlay: champion tiers, augment tiers, builds and custom guides",
   "main": "src/main/main.js",
   "author": "Kan",
-  "license": "UNLICENSED",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "private": true,
   "scripts": {
     "start": "electron .",
@@ -27,7 +27,8 @@
     },
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "LICENSE"
     ],
     "asarUnpack": [
       "src/main/helper.ps1",

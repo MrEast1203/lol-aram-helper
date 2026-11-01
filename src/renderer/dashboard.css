@@ -6,6 +6,7 @@ nav button { background: transparent; border-color: transparent; }
 nav button.active { border-color: var(--gold); color: var(--gold2); }
 #navStatus { font-size: 12px; }
 main { flex: 1; overflow: auto; padding: 16px; }
+#legal { padding: 4px 14px; font-size: 10.5px; color: var(--muted); background: var(--bg2); border-top: 1px solid var(--line); }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; align-items: start; }
 .status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .status-dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }

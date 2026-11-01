@@ -6,6 +6,7 @@ let db = await loadDb();
 let state = await api.getState();
 let settings = await api.getSettings();
 let guides = await api.listGuides();
+const appVersion = (await api.appInfo()).version;
 let tab = 'overview';
 const ui = { champSearch: '', champSel: null, augSearch: '', augRarity: '', augOpen: null, guideSel: null, draft: null, scan: null, scanning: false };
 
@@ -457,7 +458,7 @@ function champDetailView(id) {
     { class: 'col', style: { gap: '12px' } },
     h('div', { class: 'card col' }, guidesPanel(db, guides, id), buildPanel(db, { championId: id, detail, stale: detail.stale, ...buildChoiceProps(id) })),
     (detail.augmentTrios || []).length
-      ? h('div', { class: 'card col' }, h('h3', null, '三海克斯組合'), detail.augmentTrios.map((t) => h('div', { class: 'row' }, t.augmentIds.map((a) => db.augIcon(a, 28)), h('span', { class: 'muted' }, `${pct(t.stats?.winRate)} · ${num(t.games)} 場`))))
+      ? h('div', { class: 'card col' }, h('h3', null, '三海克斯組合'), detail.augmentTrios.map((t) => h('div', { class: 'row' }, t.augmentIds.map((a) => db.augIcon(a, 28)), h('span', { class: 'muted' }, `${num(t.games)} 場`))))
       : null,
     h(
       'div',
@@ -466,7 +467,7 @@ function champDetailView(id) {
       h(
         'table',
         null,
-        h('thead', null, h('tr', null, ['排名', '', '海克斯', '稀有度', 'Tier', '勝率', '選取率', '場次'].map((t) => h('th', null, t)))),
+        h('thead', null, h('tr', null, ['排名', '', '海克斯', '稀有度', 'Tier', '選取率', '場次'].map((t) => h('th', null, t)))),
         h(
           'tbody',
           null,
@@ -479,7 +480,6 @@ function champDetailView(id) {
               h('td', null, a.name),
               h('td', { class: 'muted' }, a.rarityDisplayName),
               h('td', null, tierBadge(a.stats?.tier)),
-              h('td', null, pct(a.stats?.winRate)),
               h('td', null, pct(a.stats?.pickRate)),
               h('td', { class: 'muted' }, num(a.stats?.games))
             )
@@ -514,12 +514,11 @@ function renderAugments() {
         h('td', null, a.name, g.length ? h('span', { class: 'tag', style: { marginLeft: '6px' } }, `📘 ${g.length}`) : null),
         h('td', { class: 'muted' }, a.rarityDisplayName),
         h('td', null, tierBadge(a.stats?.tier)),
-        h('td', null, pct(a.stats?.winRate)),
         h('td', null, pct(a.stats?.pickRate)),
         h('td', null, h('div', { class: 'row' }, (a.topChampions || []).slice(0, 6).map((c) => db.champIcon(c.id, 24))))
       )
     );
-    if (ui.augOpen === a.id) rows.push(h('tr', null, h('td', { colspan: 7 }, h('div', { class: 'desc' }, stripHtml(a.tooltip || a.description)))));
+    if (ui.augOpen === a.id) rows.push(h('tr', null, h('td', { colspan: 6 }, h('div', { class: 'desc' }, stripHtml(a.tooltip || a.description)))));
   }
   return h(
     'div',
@@ -554,7 +553,7 @@ function renderAugments() {
       ),
       h('span', { class: 'muted' }, `${list.length} 個 · 全域統計（局內會顯示該英雄專屬排名）`)
     ),
-    h('table', null, h('thead', null, h('tr', null, ['', '海克斯', '稀有度', 'Tier', '勝率', '選取率', '最佳英雄'].map((t) => h('th', null, t)))), h('tbody', null, rows))
+    h('table', null, h('thead', null, h('tr', null, ['', '海克斯', '稀有度', 'Tier', '選取率', '最佳英雄'].map((t) => h('th', null, t)))), h('tbody', null, rows))
   );
 }
 
@@ -816,10 +815,33 @@ function renderSettings() {
       { class: 'card col muted' },
       h('h3', null, '安全性'),
       h('div', null, '本程式不讀取遊戲記憶體、不注入遊戲、不修改遊戲檔案，也不會送出任何鍵盤滑鼠輸入給遊戲。'),
-      h('div', null, '只使用 Riot 公開的本機 API（LCU 客戶端 API、Live Client Data API）與螢幕畫面 OCR；覆蓋層是獨立的透明視窗。')
+      h('div', null, '只使用遊戲在本機提供的介面（LCU 客戶端 API、Live Client Data API）與螢幕畫面 OCR；覆蓋層是獨立的透明視窗。'),
+      h('div', null, '依 Riot 的英雄聯盟政策，本程式不顯示海克斯的勝率，只顯示 Tier、排名與選取率。')
+    ),
+    h(
+      'div',
+      { class: 'card col muted' },
+      h('h3', null, '關於與免責聲明'),
+      h('div', null, `ARAM Helper ${appVersion || ''} · 授權：PolyForm Noncommercial 1.0.0（僅限非商業用途）`),
+      h('div', null, '統計資料來自 aramgg.com Data API（data.dtodo.cn），每位使用者需使用自己的 API Key；資料的正確性與即時性由資料來源決定。'),
+      h('div', null, '本程式為個人非官方工具，「按現狀」提供，不提供任何保證。使用本程式的一切風險（包括帳號相關風險）由使用者自行承擔。'),
+      h('div', null, LEGAL_EN),
+      h('div', null, LEGAL_ZH),
+      h(
+        'div',
+        { class: 'row' },
+        h('button', { onclick: () => api.openExternal('https://polyformproject.org/licenses/noncommercial/1.0.0/') }, '授權條款'),
+        h('button', { onclick: () => api.openExternal('https://aramgg.com') }, 'aramgg.com'),
+        h('button', { onclick: () => api.openExternal('https://developer.riotgames.com/policies/general') }, 'Riot 開發者政策')
+      )
     )
   );
 }
+
+// Riot's required legal boilerplate (developer.riotgames.com/policies/general).
+const LEGAL_EN =
+  "ARAM Helper isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.";
+const LEGAL_ZH = 'ARAM Helper 未獲 Riot Games 認可，也不代表 Riot Games 或任何正式參與製作、管理 Riot Games 資產人士的觀點或意見。Riot Games 及所有相關資產皆為 Riot Games, Inc. 的商標或註冊商標。';
 
 // ---------------- live updates ----------------
 

@@ -43,8 +43,8 @@ function renderBadges() {
           { class: 'main' },
           k === bestIdx && offers.length > 1 ? h('span', { class: 'best' }, '★') : null,
           h('span', { class: `tier tier-${info.tier ?? 'x'}` }, info.tier != null ? 'T' + info.tier : '—'),
-          info.rank != null ? h('span', null, `#${info.rank}/${info.total}`) : h('span', { class: 'sub' }, '全域'),
-          h('span', null, pct(info.winRate))
+          // No augment win rates: Riot's League policy forbids showing them in any product.
+          info.rank != null ? h('span', null, `#${info.rank}/${info.total}`) : h('span', { class: 'sub' }, '全域')
         ),
         info.scope === 'champion' && info.games ? h('div', { class: 'sub' }, `此英雄 ${info.games} 場 · 選取 ${pct(info.pickRate)}`) : null,
         o.inferred ? h('div', { class: 'guess' }, `推測：${db.aug(o.augmentId)?.name || ''}`) : null,
