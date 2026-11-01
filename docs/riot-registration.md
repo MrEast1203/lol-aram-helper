@@ -20,7 +20,7 @@ ARAM Helper
 
 ## Product Description*
 
-這一欄有字數限制。下面兩個版本選放得下的那個，把 `<Product URL>` 換成實際網址（換成 repo 網址大約多 30 個字元）。被刪掉的細節放在產品網址的 README，以及送出後的 App Note 裡。
+這一欄有字數限制。下面兩個版本選放得下的那個，把 `<Product URL>` 換成 `https://mreast1203.github.io/lol-aram-helper`（大約多 30 個字元）。被刪掉的細節放在產品網址的 README，以及送出後的 App Note 裡。
 
 **版本 A（約 915 字元）**
 
@@ -44,12 +44,11 @@ Free Windows companion app for LoL ARAM: Mayhem showing static pre-game stats: c
 
 ## Product URL*
 
-表單說明這個網址是用來驗證的，所以必須是公開、而且你能控制的網址。
+```
+https://mreast1203.github.io/lol-aram-helper
+```
 
-- **建議**：用 GitHub Pages 開一個使用者網站 `https://mreast1203.github.io`，放產品介紹和下載連結。如果 Riot 要求在網站根目錄放驗證檔，這種網址可以放；`github.com/...` 的 repo 頁面不行。
-- **最簡單**：把 repo 改成公開，填 `https://github.com/MrEast1203/lol-aram-helper`。如果驗證時需要放檔案，再改用 GitHub Pages。
-
-Riot 的文件沒寫明驗證方式，填完表單後照它的指示做即可。
+Riot 會要求 `<Product URL>/riot.txt` 這個網址能讀到驗證碼。`github.com/...` 的 repo 網址做不到，因為 GitHub 不會用這種網址直接提供檔案，所以改用 GitHub Pages 發布這個 repo。驗證檔就是 repo 根目錄的 `riot.txt`，內容只有 Riot 給的那串驗證碼。
 
 ## Product Game Focus*
 
