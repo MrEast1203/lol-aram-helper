@@ -48,7 +48,7 @@
 - 政策也要求產品「不得取代玩家的決定，但可以標示重要的決定」。本程式只標示推薦，選擇由玩家自己做。
 - LCU（客戶端 API）**不是** Riot 正式支援給第三方使用的服務，隨時可能改變或失效。
 - 海克斯辨識是讀取螢幕畫面（OCR），不是 Riot 提供的資料服務；Riot 對這種做法沒有明確表態。
-- Riot 要求服務玩家的產品在 [Riot Developer Portal](https://developer.riotgames.com) 註冊。本專案目前是個人使用、尚未註冊；若要公開散布給其他玩家，請先完成註冊。
+- Riot 要求服務玩家的產品在 [Riot Developer Portal](https://developer.riotgames.com) 註冊。本專案已註冊（App ID 900373），正在等待 Riot 審核。
 - 依 Riot 要求，程式內（主視窗底部與「設定 → 關於與免責聲明」）會顯示下方的法律聲明。
 
 ### aramgg Data API

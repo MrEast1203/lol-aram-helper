@@ -20,7 +20,7 @@ ARAM Helper
 
 ## Product Description*
 
-這一欄有字數限制。下面兩個版本選放得下的那個，把 `<Product URL>` 換成 `https://mreast1203.github.io/lol-aram-helper`（大約多 30 個字元）。被刪掉的細節放在產品網址的 README，以及送出後的 App Note 裡。
+這一欄有字數限制。下面兩個版本選放得下的那個，把 `<Product URL>` 換成 `https://mreast1203.github.io/lol-aram-helper`（大約多 30 個字元）。被刪掉的細節放在產品網址的 README，以及送出後的灰色地帶提問裡。
 
 **版本 A（約 915 字元）**
 
@@ -62,12 +62,20 @@ League of Legends
 No
 ```
 
-## App Note（申請送出後貼上）
+## 灰色地帶提問（選用，從 Create a Ticket 送出）
 
-General Policies 寫明，灰色地帶要在申請裡用 App Note 提問。申請送出後，把下面這段貼成一則 App Note。如果找不到 App Note 的地方，就把它接在 Product Description 最後面。
+General Policies 說灰色地帶可以在申請裡用 App Note 提問，但現在的入口頁面上，Project Discussion 只有 Riot 能發訊息（審核人員有問題時會在這裡問），開發者要主動提問只能按「Create a Ticket」。提問不是必要步驟：Product Description 已經寫明 OCR、LCU 和 aramgg 的用法，審核會依這份說明判斷。
+
+Subject：
 
 ```
-Before we make the project public, we'd like your feedback on a few points that may be gray areas:
+ARAM Helper (App ID 900373): policy questions before release
+```
+
+Description：
+
+```
+Hi, I've registered ARAM Helper (App ID 900373), a free companion app for League of Legends ARAM: Mayhem. I'd like your feedback on a few points that may be gray areas:
 
 1. Augment detection by screen OCR. The Live Client Data API has no augment fields, so when the player presses a hotkey (F7) or clicks our button on the augment selection screen, the app captures that area of the screen and reads the augment names with the built-in Windows OCR. It runs only on the player's request, reads only what the player is already looking at, and doesn't touch the game process. Is this acceptable? If not, we'll replace it with manual input: the player picks the offered augments in our panel.
 
@@ -78,6 +86,8 @@ Before we make the project public, we'd like your feedback on a few points that 
 4. Reading game.cfg. The app reads the WindowMode value from Config/game.cfg (read-only, never modified), to warn the player that the overlay needs Borderless mode. Is this acceptable, or should we detect the window mode another way?
 
 5. Visual style. The app has its own name, icon and color theme (charcoal and rose, not the League client's gold and teal) and uses no Riot logos. Please let us know if any part of the UI still looks too close to official League of Legends branding.
+
+Thank you!
 ```
 
 ## 審核可能會問的問題，以及建議的回答方式
@@ -88,7 +98,7 @@ Before we make the project public, we'd like your feedback on a few points that 
 
 ## 附錄：完整產品說明
 
-如果審核人員要求更詳細的說明，或你想放在產品網頁上，就用這份完整版（約 4306 字元）。App Note 如果也有字數限制，可以把下面這份和上面的 App Note 拆成幾則分開貼。
+如果審核人員要求更詳細的說明，或你想放在產品網頁上，就用這份完整版（約 4306 字元）。如果提問的欄位也有字數限制，可以把下面這份和上面的灰色地帶提問拆成幾則分開送。
 
 ```
 ARAM Helper is a free, noncommercial Windows desktop companion app for League of Legends ARAM: Mayhem (queue 2400). It shows static statistics that are available before the game, to help players learn which champions, augments and builds work well.
@@ -130,5 +140,5 @@ Privacy:
 Legal:
 - The Riot Games legal boilerplate is shown at the bottom of the main window and on the app's About page. The app uses its own name, icon and color theme, and no Riot logos.
 
-We have a few gray-area questions (OCR, the League Client endpoints we use, third-party statistics), which we will post as an App Note.
+We have a few gray-area questions (OCR, the League Client endpoints we use, third-party statistics), which we will send in a separate message.
 ```

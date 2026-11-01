@@ -50,7 +50,7 @@ These are design principles, not an endorsement or guarantee by Riot; see the [d
 - The policy also says products should not remove game decisions, but may highlight important ones. This app only highlights recommendations; the player makes the choice.
 - The LCU (League Client API) is **not** officially supported by Riot for third-party applications and may change or break at any time.
 - Augment detection reads the screen (OCR); it is not a data service provided by Riot, and Riot has not stated a position on this approach.
-- Riot requires products that serve players to be registered on the [Riot Developer Portal](https://developer.riotgames.com). This project is currently for personal use and is not registered; register it before distributing it publicly to other players.
+- Riot requires products that serve players to be registered on the [Riot Developer Portal](https://developer.riotgames.com). This project is registered (App ID 900373) and waiting for Riot's review.
 - As Riot requires, the legal notice below is shown in the app (at the bottom of the main window and under Settings → 關於與免責聲明).
 
 ### aramgg Data API
