@@ -159,7 +159,8 @@ export function summarizeBuild(b) {
     winRate: b.stats?.winRate,
     pickRate: b.stats?.pickRate,
     spells: b.summonerSpells || [],
-    starting: b.startingItems || [],
+    // The API does not sort starting sets by popularity (and many are 1-game samples).
+    starting: [...(b.startingItems || [])].sort((x, y) => (y.games || 0) - (x.games || 0)),
     cores: b.coreItems || [],
     followups,
     situational: (b.situationalItems || []).slice(0, 8).map((s) => s.id),

@@ -177,8 +177,22 @@ class Controller extends EventEmitter {
   // ---------- live game ----------
 
   // Dev preview (ARAM_SIM=<screenshot>): fakes a running game whose "screen" is the image.
-  startSimulation(file, rect, { championId = 266, tab = false } = {}) {
+  startSimulation(file, rect, { championId = 266, tab = false, champSelect = false } = {}) {
     this.sim = file;
+    if (champSelect) {
+      // A fake ARAM champ select: me on 266, a bench and four teammates.
+      this.patch({
+        champSelect: {
+          championId,
+          bench: [17, 103, 86, 222, 412],
+          benchEnabled: true,
+          team: [championId, 89, 157, 875, 25].map((id, i) => ({ championId: id, isMe: i === 0 })),
+          spells: [4, 32],
+          timer: 'BAN_PICK',
+        },
+      });
+      return;
+    }
     this.patch({
       game: { gameId: 'sim', queueId: 2400, gameMode: 'KIWI', championId, alias: '', level: 3, isDead: false, gameTime: 0, items: [], startedAt: Date.now() },
       gameWindow: { ...rect, foreground: true },

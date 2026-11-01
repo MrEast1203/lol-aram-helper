@@ -1,6 +1,6 @@
 // Main window: status, tier lists, custom guide editor and settings.
 import { api, h, pct, num, tierBadge, stripHtml, RARITY, loadDb } from './common.js';
-import { buildPanel, buildBlock, guideBox, guidesPanel } from './buildview.js';
+import { buildPanel, guideBox, guidesPanel } from './buildview.js';
 
 let db = await loadDb();
 let state = await api.getState();
@@ -171,6 +171,17 @@ const itemFilters = [
   { label: '技能急速', value: 'AbilityHaste', test: cat('AbilityHaste') },
   { label: '鞋子', value: 'Boots', test: (e) => e.boots },
 ];
+
+// Build dropdown wiring: the choice is stored per champion and shared with the overlay.
+function buildChoiceProps(championId) {
+  return {
+    choice: settings.buildChoice?.[championId],
+    onSelectBuild: async (_i, tag) => {
+      settings = await api.setSettings({ buildChoice: { ...settings.buildChoice, [championId]: tag } });
+      render();
+    },
+  };
+}
 
 // ---------------- overview ----------------
 
@@ -358,7 +369,7 @@ function renderOverview() {
       { class: 'card col' },
       h('h3', null, 'Tab 面板預覽'),
       guidesPanel(db, guides, game.championId, s.offers.map((o) => o.augmentId)),
-      buildPanel(db, { championId: game.championId, detail, buildsShown: settings.buildsShown, stale: detail?.stale })
+      buildPanel(db, { championId: game.championId, detail, stale: detail?.stale, ...buildChoiceProps(game.championId) })
     );
   }
 
@@ -444,8 +455,7 @@ function champDetailView(id) {
   return h(
     'div',
     { class: 'col', style: { gap: '12px' } },
-    h('div', { class: 'card col' }, guidesPanel(db, guides, id), buildPanel(db, { championId: id, detail, buildsShown: 1, stale: detail.stale })),
-    (detail.builds || []).length > 1 ? h('div', { class: 'card col' }, h('h3', null, '其他流派'), detail.builds.slice(1).map((b, i) => buildBlock(db, b, i + 1))) : null,
+    h('div', { class: 'card col' }, guidesPanel(db, guides, id), buildPanel(db, { championId: id, detail, stale: detail.stale, ...buildChoiceProps(id) })),
     (detail.augmentTrios || []).length
       ? h('div', { class: 'card col' }, h('h3', null, '三海克斯組合'), detail.augmentTrios.map((t) => h('div', { class: 'row' }, t.augmentIds.map((a) => db.augIcon(a, 28)), h('span', { class: 'muted' }, `${pct(t.stats?.winRate)} · ${num(t.games)} 場`))))
       : null,
@@ -787,7 +797,6 @@ function renderSettings() {
         field('Tab 面板位置', h('select', { onchange: (e) => save({ tabPanelSide: e.target.value }) }, h('option', { value: 'right', selected: s.tabPanelSide === 'right' }, '右側'), h('option', { value: 'left', selected: s.tabPanelSide === 'left' }, '左側'))),
         field('Tab 面板寬度', numInput('tabPanelWidth', { min: 280, step: 10 })),
         field('Tab 面板上邊距', numInput('tabPanelTop', { min: 0, step: 10 })),
-        field('顯示流派數', numInput('buildsShown', { min: 1 })),
         field('選角時顯示側邊面板', check('champSelectPanel')),
         field('關閉視窗時縮到系統匣', check('closeToTray'), '不勾：關閉視窗就完全結束程式。勾選：程式留在系統匣，遊戲中的覆蓋層繼續運作。'),
         field('LoL 安裝路徑', h('input', { value: s.installPath, style: { width: '360px' }, onchange: (e) => save({ installPath: e.target.value }) }), '只會「讀取」lockfile 與 game.cfg，不會修改遊戲檔案。')

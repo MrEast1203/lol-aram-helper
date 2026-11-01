@@ -20,15 +20,23 @@ async function shot(win, dir, name) {
   fs.writeFileSync(path.join(dir, `${name}.png`), img.toPNG());
 }
 
-async function runDevShots(win, dir, overlay) {
+async function runDevShots(win, dir, overlay, champPanel) {
   fs.mkdirSync(dir, { recursive: true });
   await sleep(2500);
-  if (overlay && process.env.ARAM_SIM) {
+  if (champPanel && process.env.ARAM_SIM_CS) {
+    await shot(champPanel, dir, 'champselect');
+    await champPanel.webContents.executeJavaScript(`document.getElementById('main').scrollTop = 99999; document.querySelector('.build-select .bs-head')?.click()`).catch(() => {});
+    await sleep(500);
+    await shot(champPanel, dir, 'champselect-builds');
+  } else if (overlay && process.env.ARAM_SIM) {
     await overlay.webContents.executeJavaScript('void window.api.manualScan()').catch(() => {});
     await sleep(80);
     await shot(overlay, dir, 'overlay-scanning');
     await sleep(1500);
     await shot(overlay, dir, 'overlay-result');
+    await overlay.webContents.executeJavaScript(`document.querySelector('#tab .build-select .bs-head')?.click()`).catch(() => {});
+    await sleep(400);
+    await shot(overlay, dir, 'overlay-build-dropdown');
   }
   for (const [name, js] of STEPS) {
     await win.webContents.executeJavaScript(js).catch((e) => console.warn('[devshots]', name, e.message));

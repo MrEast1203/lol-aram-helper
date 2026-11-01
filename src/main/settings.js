@@ -5,7 +5,7 @@ const { EventEmitter } = require('events');
 
 const SETTINGS_VERSION = 4;
 // Removed in v3: scanning is manual only and picks are no longer tracked.
-const OBSOLETE = ['augmentLevels', 'autoScan', 'respawnScanMs', 'gameStartScanSec', 'scanSessionMs', 'scanFastMs', 'scanIdleMs'];
+const OBSOLETE = ['augmentLevels', 'autoScan', 'respawnScanMs', 'gameStartScanSec', 'scanSessionMs', 'scanFastMs', 'scanIdleMs', 'buildsShown'];
 
 const DEFAULTS = {
   settingsVersion: SETTINGS_VERSION,
@@ -30,7 +30,8 @@ const DEFAULTS = {
   tabPanelSide: 'right',
   tabPanelWidth: 380,
   tabPanelTop: 90,
-  buildsShown: 2,
+  // Build shown per champion: { [championId]: build tag }, picked in the build dropdown.
+  buildChoice: {},
   hideFromCapture: true,
   champSelectPanel: true,
   // Off: closing the main window quits the app.

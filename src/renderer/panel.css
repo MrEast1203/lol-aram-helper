@@ -10,3 +10,15 @@
 .sk { display: inline-block; width: 15px; text-align: center; font-size: 11px; border-radius: 2px; background: #1a2333; }
 .sk-Q { color: #7dd3fc; } .sk-W { color: #86efac; } .sk-E { color: #fca5a5; } .sk-R { color: #0b0f17; background: var(--gold); }
 .picked-aug { align-items: center; gap: 2px; }
+/* Build picker (dropdown) */
+.build-select { position: relative; border: 1px solid var(--line); border-radius: 8px; background: var(--bg3); }
+.build-select .bs-head { padding: 5px 8px; cursor: pointer; }
+.build-select .bs-head:hover { background: #222d40; }
+.build-select .bs-caret { margin-left: auto; color: var(--gold); }
+.build-select .bs-list { display: none; border-top: 1px solid var(--line); }
+.build-select.open .bs-list { display: block; }
+.build-select.open .bs-caret { transform: rotate(180deg); }
+.build-select .bs-opt { padding: 6px 8px; gap: 4px; cursor: pointer; border-bottom: 1px solid var(--line); }
+.build-select .bs-opt:last-child { border-bottom: none; }
+.build-select .bs-opt:hover { background: #222d40; }
+.build-select .bs-opt.on { box-shadow: inset 3px 0 0 var(--gold); }

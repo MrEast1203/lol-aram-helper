@@ -27,23 +27,30 @@ export function skillLine(sum) {
   );
 }
 
-export function buildBlock(db, build, index, { compact = false } = {}) {
+const buildSummaryLine = (s) => `${pct(s.winRate)} 勝 · ${pct(s.pickRate, 0)} 選 · ${num(s.games)} 場`;
+
+// Below this many games a starting set is noise rather than a recommendation.
+const MIN_STARTING_GAMES = 30;
+
+function startingRow(db, top) {
+  const label = h('span', { class: 'label' }, '出門');
+  if (!top || top.games < MIN_STARTING_GAMES) return h('div', { class: 'row' }, label, h('span', { class: 'muted' }, '樣本不足'));
+  return h('div', { class: 'row' }, label, itemRow(db, top.itemIds, 26), h('span', { class: 'muted' }, `${pct(top.winRate)} · ${num(top.games)}場`));
+}
+
+export function buildBlock(db, build, index, { compact = false, head = true } = {}) {
   const s = summarizeBuild(build);
   if (!s) return null;
-  const header = h(
-    'div',
-    { class: 'build-head row' },
-    h('b', null, `流派 ${index + 1}`),
-    s.tag ? h('span', { class: 'tag' }, s.tag) : null,
-    h('span', { class: 'muted' }, `${pct(s.winRate)} 勝 · ${pct(s.pickRate, 0)} 選 · ${num(s.games)} 場`)
-  );
+  const header = head
+    ? h('div', { class: 'build-head row' }, h('b', null, `流派 ${index + 1}`), s.tag ? h('span', { class: 'tag' }, s.tag) : null, h('span', { class: 'muted' }, buildSummaryLine(s)))
+    : null;
   if (compact) return h('div', { class: 'build col' }, header, s.cores[0] ? itemRow(db, s.cores[0].itemIds, 26, true) : null);
   return h(
     'div',
     { class: 'build col' },
     header,
     h('div', { class: 'row' }, h('span', { class: 'label' }, '召喚師'), spellsRow(db, s.spells, 1)),
-    s.starting[0] ? h('div', { class: 'row' }, h('span', { class: 'label' }, '出門'), itemRow(db, s.starting[0].itemIds, 26)) : null,
+    startingRow(db, s.starting[0]),
     s.cores.slice(0, 2).map((c, i) =>
       h('div', { class: 'row' }, h('span', { class: 'label' }, i ? '核心 B' : '核心'), itemRow(db, c.itemIds, 30, true), h('span', { class: 'muted' }, `${pct(c.winRate)} · ${num(c.games)}場`))
     ),
@@ -62,10 +69,52 @@ export function guidesPanel(db, guides, championId, highlightAugmentIds = []) {
   return h('div', { class: 'guides-panel col' }, h('div', { class: 'section' }, '📘 自訂攻略'), [...list.filter(hot), ...list.filter((g) => !hot(g))].map((g) => guideBox(db, g, hot(g))));
 }
 
-// Header and recommended builds.
-export function buildPanel(db, { championId, detail, buildsShown = 2, stale = false }) {
+export const buildTag = (b) => (b?.tags ? Object.values(b.tags).join(' / ') : '');
+export const buildsOf = (detail) => (detail?.builds?.length ? detail.builds : detail?.build ? [detail.build] : []);
+
+// The chosen build is remembered by its tag ("AD, Bruiser"), which survives the
+// builds being re-ordered by a data update; falls back to the most played one.
+export function chosenBuildIndex(builds, choice) {
+  const i = builds.findIndex((b) => buildTag(b) === choice);
+  return i >= 0 ? i : 0;
+}
+
+// Dropdown for picking which build to show. Plain elements (not <select>) so it
+// also works in the click-through, never-focused overlay; `.interactive` marks it.
+export function buildSelector(db, builds, index, onSelect) {
+  const cur = summarizeBuild(builds[index]);
+  const root = h('div', { class: 'build-select interactive' });
+  const head = h(
+    'div',
+    { class: 'bs-head row', onclick: () => root.classList.toggle('open') },
+    h('b', null, `流派 ${index + 1}/${builds.length}`),
+    cur.tag ? h('span', { class: 'tag' }, cur.tag) : null,
+    h('span', { class: 'muted' }, buildSummaryLine(cur)),
+    h('span', { class: 'bs-caret' }, '▾')
+  );
+  const list = h(
+    'div',
+    { class: 'bs-list' },
+    builds.map((b, i) => {
+      const s = summarizeBuild(b);
+      return h(
+        'div',
+        { class: `bs-opt col ${i === index ? 'on' : ''}`, onclick: () => (root.classList.remove('open'), onSelect(i, buildTag(b))) },
+        h('div', { class: 'row' }, h('b', null, `流派 ${i + 1}`), s.tag ? h('span', { class: 'tag' }, s.tag) : null, h('span', { class: 'muted' }, buildSummaryLine(s))),
+        s.cores[0] ? itemRow(db, s.cores[0].itemIds, 22, true) : null
+      );
+    })
+  );
+  root.append(head, list);
+  return root;
+}
+
+// Header and the chosen recommended build (with a picker when onSelectBuild is given).
+export function buildPanel(db, { championId, detail, stale = false, choice, onSelectBuild }) {
   const champ = db.champ(championId);
-  const builds = detail?.builds?.length ? detail.builds : detail?.build ? [detail.build] : [];
+  const builds = buildsOf(detail);
+  const index = chosenBuildIndex(builds, choice);
+  const picker = onSelectBuild && builds.length > 1 ? buildSelector(db, builds, index, onSelectBuild) : null;
   return h(
     'div',
     { class: 'build-panel col' },
@@ -79,7 +128,7 @@ export function buildPanel(db, { championId, detail, buildsShown = 2, stale = fa
       h('span', { class: 'muted' }, `#${db.champRank.get(championId) || '—'} · ${pct(champ?.stats?.winRate)}`)
     ),
     builds.length
-      ? h('div', { class: 'col' }, h('div', { class: 'section' }, '推薦出裝' + (stale ? '（舊版資料）' : '')), builds.slice(0, buildsShown).map((b, i) => buildBlock(db, b, i, { compact: i > 0 })))
+      ? h('div', { class: 'col' }, h('div', { class: 'section' }, '推薦出裝' + (stale ? '（舊版資料）' : '')), picker, buildBlock(db, builds[index], index, { head: !picker }))
       : h('div', { class: 'muted' }, detail?.error ? `出裝資料載入失敗：${detail.error}` : '出裝資料載入中…')
   );
 }

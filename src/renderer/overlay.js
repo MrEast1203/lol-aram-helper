@@ -65,7 +65,16 @@ function renderTab() {
   const w = settings.tabPanelWidth;
   const side = (left) => ({ display: 'block', width: w + 'px', top: settings.tabPanelTop + 'px', left: left ? '16px' : `calc(100vw - ${w + 16}px)` });
   Object.assign(builds.style, side(settings.tabPanelSide === 'left'));
-  builds.replaceChildren(buildPanel(db, { championId: state.game.championId, detail, buildsShown: settings.buildsShown, stale: detail?.stale }));
+  const championId = state.game.championId;
+  builds.replaceChildren(
+    buildPanel(db, {
+      championId,
+      detail,
+      stale: detail?.stale,
+      choice: settings.buildChoice?.[championId],
+      onSelectBuild: (_i, tag) => api.setSettings({ buildChoice: { ...settings.buildChoice, [championId]: tag } }),
+    })
+  );
   const panel = guidesPanel(db, guides, state.game.championId, (state.offers || []).map((o) => o.augmentId));
   if (panel) {
     Object.assign(guideEl.style, side(settings.tabPanelSide !== 'left'));
@@ -99,16 +108,31 @@ function renderScanStatus() {
   }
 }
 
-// The overlay is click-through; it becomes clickable only while the button is hovered.
+// The overlay is click-through. Mouse moves are still forwarded to it, so it turns
+// clickable exactly while the cursor is over an `.interactive` element (scan button,
+// build picker) and goes back to click-through as soon as it is not, including when
+// that element is removed or hidden under the cursor.
+let interactive = false;
+let mouse = null;
+function updateInteractive() {
+  const el = mouse ? document.elementFromPoint(mouse.x, mouse.y) : null;
+  const want = !!el?.closest('.interactive');
+  if (want !== interactive) {
+    interactive = want;
+    api.setOverlayInteractive(want);
+  }
+}
+document.addEventListener('mousemove', (e) => {
+  mouse = { x: e.clientX, y: e.clientY };
+  updateInteractive();
+});
+
 const scanBtn = document.getElementById('scanBtn');
-scanBtn.addEventListener('mouseenter', () => api.setOverlayInteractive(true));
-scanBtn.addEventListener('mouseleave', () => api.setOverlayInteractive(false));
 scanBtn.addEventListener('click', () => api.manualScan());
 
 function renderScanButton() {
   const show = !!state.game && settings.scanButton;
   if (!show) {
-    if (scanBtn.style.display !== 'none') api.setOverlayInteractive(false);
     scanBtn.style.display = 'none';
     return;
   }
@@ -138,6 +162,8 @@ async function render() {
   renderToast();
   renderScanButton();
   renderScanStatus();
+  // The element under the cursor may have just appeared or disappeared.
+  updateInteractive();
 }
 
 api.onState((s) => {

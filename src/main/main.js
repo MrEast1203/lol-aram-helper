@@ -357,9 +357,9 @@ app.whenReady().then(async () => {
   controller.start();
   if (process.env.ARAM_SIM) {
     const b = screen.dipToScreenRect(null, screen.getPrimaryDisplay().bounds);
-    controller.startSimulation(process.env.ARAM_SIM, { x: b.x, y: b.y, w: b.width, h: b.height }, { tab: !!process.env.ARAM_SIM_TAB });
+    controller.startSimulation(process.env.ARAM_SIM, { x: b.x, y: b.y, w: b.width, h: b.height }, { tab: !!process.env.ARAM_SIM_TAB, champSelect: !!process.env.ARAM_SIM_CS });
   }
-  if (process.env.ARAM_SHOTS) require('./devshots').runDevShots(dashboard, process.env.ARAM_SHOTS, overlay);
+  if (process.env.ARAM_SHOTS) require('./devshots').runDevShots(dashboard, process.env.ARAM_SHOTS, overlay, champPanel);
   data.checkVersion();
   setInterval(() => data.checkVersion(), 30 * 60 * 1000);
 });
