@@ -192,10 +192,24 @@ function dot(on, warn) {
 
 let detailCache = new Map();
 async function loadDetail(id, fetch = false) {
-  const r = await api.getChampion(id, { fetch });
+  const r = await api.getChampion(id, { fetch, reason: '主視窗：下載詳情' });
   const d = r?.data ? { ...r.data, stale: r.stale } : r?.error ? { error: r.error } : null;
   detailCache.set(id, d);
   return d;
+}
+
+// Credit log, reloaded whenever the data status reports a newer entry.
+let creditLog = { at: undefined, entries: [] };
+function cachedCreditLog() {
+  const at = state.data.creditLogAt;
+  if (creditLog.at !== at) {
+    creditLog.at = at;
+    api.creditLog().then((entries) => {
+      creditLog.entries = entries;
+      render();
+    });
+  }
+  return creditLog.entries;
 }
 function cachedDetail(id) {
   if (!detailCache.has(id)) {
@@ -317,6 +331,7 @@ function renderOverview() {
   );
 
   const d = s.data;
+  const checked = d.lastCheck && `（${new Date(d.lastCheck.at).toLocaleTimeString()} ${d.lastCheck.error ? `檢查失敗：${d.lastCheck.error}` : '檢查'}）`;
   const dataCard = h(
     'div',
     { class: 'card col' },
@@ -326,16 +341,59 @@ function renderOverview() {
       { class: 'kv' },
       h('span', null, '本地資料版本'),
       h('span', null, d.dataVersion || '—'),
-      h('span', null, '最新版本'),
-      h('span', null, d.latestVersion || '—'),
+      h('span', null, 'aramgg 最新'),
+      h('span', null, d.latestVersion || '—', checked ? h('span', { class: 'muted' }, checked) : null),
       h('span', null, '遊戲版本'),
-      h('span', null, d.gamePatch || '—'),
+      h('span', null, `統計資料 ${d.gamePatch || '—'} · Riot 最新 ${d.riotPatch || '—'}`),
       h('span', null, '今日 credits'),
-      h('span', null, d.credits ? `剩餘 ${d.credits.remaining} / ${d.credits.daily}${d.credits.estimated ? '（估計）' : ''}` : '—'),
+      h('span', null, d.credits ? `剩餘 ${d.credits.remaining} / ${d.credits.daily}${d.credits.estimated ? '（估計）' : ''}，預載保留 ${settings.prefetchReserve}` : '—'),
       h('span', null, '已快取英雄'),
-      h('span', null, `${d.cachedChampions} / ${db.champions.length}（${d.gamePatch || ''} 版本內有效${d.prefetching ? '，背景預載中' : ''}）`)
+      h('span', null, `${d.cachedChampions} / ${db.champions.length}（${d.gamePatch || ''} 版本內有效）`),
+      h('span', null, '背景預載'),
+      h('span', null, d.prefetching ? '進行中…' : d.prefetchNote || '—')
     ),
-    h('div', { class: 'row' }, h('button', { onclick: () => api.refreshData() }, d.loading ? '更新中…' : '檢查更新'), h('button', { class: 'danger', onclick: () => confirm('清除所有快取並重新下載？會消耗 credits。') && api.clearCache() }, '清除快取'))
+    d.riotPatch && d.gamePatch && d.riotPatch !== d.gamePatch
+      ? h('div', { class: 'muted' }, `遊戲已更新到 ${d.riotPatch}，但 aramgg 還沒發布 ${d.riotPatch} 的統計，目前最新的是 ${d.gamePatch} 版的資料。aramgg 發布後，程式會在 30 分鐘內自動更新。`)
+      : null,
+    h(
+      'div',
+      { class: 'row' },
+      h('button', { disabled: d.checking || d.loading, onclick: () => api.refreshData() }, d.loading ? '更新中…' : d.checking ? '檢查中…' : '檢查更新'),
+      h('button', { class: 'danger', onclick: () => confirm('清除所有快取並重新下載？會消耗 credits。') && api.clearCache() }, '清除快取')
+    )
+  );
+
+  const entries = cachedCreditLog();
+  const dayStart = new Date().setUTCHours(0, 0, 0, 0); // the daily quota resets at UTC 00:00
+  const usedBy = new Map();
+  for (const e of entries.filter((e) => e.at >= dayStart && e.cost)) {
+    const k = (e.reason || '其他').split('：')[0];
+    usedBy.set(k, (usedBy.get(k) || 0) + e.cost);
+  }
+  const logRow = (e) =>
+    h(
+      'tr',
+      null,
+      h('td', { class: 'muted' }, new Date(e.at).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })),
+      h('td', null, creditItem(e.resource)),
+      h('td', null, e.reason || '—'),
+      h('td', null, e.status < 300 ? `-${e.cost ?? '?'}` : `HTTP ${e.status}`),
+      h('td', null, e.remaining ?? '—')
+    );
+  const logTable = (rows) => h('table', { class: 'credit-log' }, h('thead', null, h('tr', null, ['時間', '項目', '原因', 'credits', '剩餘'].map((t) => h('th', null, t)))), h('tbody', null, rows.map(logRow)));
+  const creditCard = h(
+    'div',
+    { class: 'card col', style: { gridColumn: '1 / -1' } },
+    h('h3', null, 'Credits 使用紀錄'),
+    h(
+      'div',
+      null,
+      `今日（UTC 00:00 起）伺服器記錄已用 ${d.credits ? (d.credits.estimated ? 0 : d.credits.usedToday) : '—'} credits`,
+      usedBy.size ? `；本程式：${[...usedBy].map(([k, v]) => `${k} ${v}`).join('、')}` : '；本程式今天還沒用到 credits'
+    ),
+    h('div', { class: 'muted' }, `只有下載資料表（1 credit）和英雄詳情（2 credits）會花 credits，檢查版本免費。背景預載會留 ${settings.prefetchReserve} credits 給選角和遊戲中使用，可在「設定 → 資料」修改。`),
+    entries.length ? logTable(entries.slice(0, 15)) : h('div', { class: 'muted' }, '尚無紀錄。'),
+    entries.length > 15 ? h('details', null, h('summary', { class: 'muted' }, `顯示全部 ${entries.length} 筆`), logTable(entries.slice(15))) : null
   );
 
   const lcuCard = h(
@@ -374,7 +432,15 @@ function renderOverview() {
     );
   }
 
-  return h('div', { class: 'col', style: { gap: '12px' } }, warnings, h('div', { class: 'grid2' }, lcuCard, gameCard, detectorCard, dataCard, historyCard, preview));
+  return h('div', { class: 'col', style: { gap: '12px' } }, warnings, h('div', { class: 'grid2' }, lcuCard, gameCard, detectorCard, dataCard, historyCard, preview, creditCard));
+}
+
+const TABLE_NAMES = { champions: '英雄列表', augments: '海克斯列表', items: '裝備列表', 'summoner-spells': '召喚師技能列表' };
+function creditItem(resource) {
+  const m = /^champions\/(\d+)$/.exec(resource);
+  if (!m) return TABLE_NAMES[resource] || resource;
+  const id = Number(m[1]);
+  return h('span', { class: 'row' }, db.champIcon(id, 20), db.champ(id)?.name || `英雄 ${id}`);
 }
 
 // ---------------- champions ----------------
@@ -748,7 +814,7 @@ function renderSettings() {
           '需與遊戲語言一致，海克斯名稱才能被 OCR 對上。'
         ),
         field('背景預載英雄詳情', check('prefetch'), '版本更新後，用剩餘 credits 慢慢預載常用英雄（優先選取率高的）。'),
-        field('預載保留 credits', numInput('prefetchReserve', { min: 0 }), '預載不會用到這個數量以下，保留給選角/局內即時查詢（每位英雄 2 credits）。')
+        field('預載保留 credits', numInput('prefetchReserve', { min: 0 }), '預載不會用到這個數量以下，保留給選角/局內即時查詢（每位英雄 2 credits）。預設 80。')
       )
     ),
     h(

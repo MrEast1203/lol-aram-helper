@@ -15,7 +15,7 @@ document.getElementById('close').onclick = () => window.close();
 async function detailFor(id, fetch = false) {
   if (!id) return null;
   if (details.has(id) && !fetch) return details.get(id);
-  const r = await api.getChampion(id, { fetch });
+  const r = await api.getChampion(id, { fetch, reason: '選角面板：點擊英雄' });
   const d = r?.data ? { ...r.data, stale: r.stale } : r?.error ? { error: r.error } : null;
   details.set(id, d);
   return d;

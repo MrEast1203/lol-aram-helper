@@ -87,11 +87,12 @@ Windows OCR reads almost nothing on the full game screen because the ornate card
 
 ## Data cache and credits
 
-- `config.json` (free): checked at startup and every 30 minutes for `dataVersion`.
+- `config.json` (free): checked at startup and every 30 minutes for `dataVersion`, or with "檢查更新" on the overview. The app also reads the latest game patch from Riot's Data Dragon; when the game has a new patch that aramgg hasn't published statistics for yet, the overview says so.
 - Champion / augment / item / summoner spell lists (1 credit each): downloaded again only when `dataVersion` changes.
 - Champion details (2 credits each): downloaded on demand in champ select or in game, and **valid for the whole game patch (e.g. 16.21.x)**. Minor data updates (16.21.4 → 16.21.5) don't drop cached champions; they are refreshed in the background with leftover credits.
-- Background prefetch: missing champions first, then outdated ones, by pick rate, 2.5 s between requests, keeping 60 credits in reserve by default. Prefetching everything would need 4 + 173×2 = 350 credits, more than a day's quota, so it is not done all at once at startup.
+- Background prefetch: missing champions first, then outdated ones, by pick rate, 2.5 s between requests, keeping 80 credits in reserve by default (Settings → 資料). Prefetching everything would need 4 + 173×2 = 350 credits, more than a day's quota, so it is not done all at once at startup.
 - Cache files are never deleted on a data update; if a download fails, the older cache is used. Cache folder: `%APPDATA%\ARAM Helper\aram-data\`.
+- Every request that spends credits (time, item, reason, cost, credits left) is listed under "Credits 使用紀錄" on the overview, keeping the last 300 (`aram-data\credit-log.json`), and written to `app.log`.
 
 ## Disclaimer
 

@@ -5,6 +5,7 @@ const path = require('path');
 
 const STEPS = [
   ['overview', `document.querySelector('[data-tab=overview]').click()`],
+  ['overview-credits', `document.getElementById('view').scrollTop = 99999`],
   ['champions', `document.querySelector('[data-tab=champions]').click(); setTimeout(() => document.querySelectorAll('tr.clickable')[0]?.click(), 100)`],
   ['champion-266', `(() => { const i = document.querySelector('.toolbar input'); i.value = '厄薩斯'; i.dispatchEvent(new Event('input')); setTimeout(() => document.querySelector('tr.clickable')?.click(), 100); })()`],
   ['augments', `document.querySelector('[data-tab=augments]').click()`],

@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   importGuides: () => invoke('guides:import'),
   hideOffers: () => invoke('scan:hide'),
   refreshData: () => invoke('data:refresh'),
+  creditLog: () => invoke('data:creditLog'),
   clearCache: () => invoke('data:clearCache'),
   testScan: () => invoke('detector:test'),
   testScanFile: () => invoke('detector:testFile'),

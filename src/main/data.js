@@ -9,14 +9,18 @@
 //    champions (then same-patch refreshes) are prefetched in the background, most-picked
 //    first, while keeping `prefetchReserve` credits for on-demand use.
 //  - Cached files are never deleted on update; an older patch is served as a fallback.
+//  - Every paid request is recorded in credit-log.json (shown on the dashboard) and app.log.
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const { EventEmitter } = require('events');
 
 const BASE = 'https://data.dtodo.cn/api/v1';
+// Riot's public patch list, only to tell the player when aramgg is behind the game.
+const DDRAGON_VERSIONS = 'https://ddragon.leagueoflegends.com/api/versions.json';
 const TABLES = ['champions', 'augments', 'items', 'summoner-spells'];
 const CHAMPION_COST = 2;
+const CREDIT_LOG_MAX = 300;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const utcDay = () => new Date().toISOString().slice(0, 10);
 // "16.21.5" -> "16.21"
@@ -33,9 +37,14 @@ class DataStore extends EventEmitter {
     this.inflight = new Map();
     this.latestVersion = null;
     this.credits = null; // { remaining, daily, usedToday, day }
+    this.creditLog = []; // newest first: { at, resource, reason, cost, remaining, status }
+    this.lastCheck = null; // { at, error }
+    this.riotPatch = null; // latest live patch from Data Dragon, e.g. "16.22"
     this.error = null;
     this.loading = false;
+    this.checking = false;
     this.prefetching = false;
+    this.prefetchNote = null; // why the last prefetch stopped
   }
 
   get locale() {
@@ -50,6 +59,9 @@ class DataStore extends EventEmitter {
     try {
       this.credits = JSON.parse(await fsp.readFile(path.join(this.dir, 'credits.json'), 'utf8'));
     } catch {}
+    try {
+      this.creditLog = JSON.parse(await fsp.readFile(path.join(this.dir, 'credit-log.json'), 'utf8'));
+    } catch {}
     await this.loadTablesFromDisk();
     this.emitStatus();
   }
@@ -60,11 +72,16 @@ class DataStore extends EventEmitter {
       dataVersion: this.tables?.dataVersion || null,
       gamePatch: this.tables?.gamePatch || null,
       latestVersion: this.latestVersion,
+      riotPatch: this.riotPatch,
+      lastCheck: this.lastCheck,
       hasApiKey: !!this.settings.get().apiKey,
       credits,
+      creditLogAt: this.creditLog[0]?.at || null,
       error: this.error,
       loading: this.loading,
+      checking: this.checking,
       prefetching: this.prefetching,
+      prefetchNote: this.prefetchNote,
       cachedChampions: [...this.champions.values()].filter((c) => this.usable(c)).length,
       latestChampions: [...this.champions.values()].filter((c) => c.dataVersion === this.currentVersion()).length,
       totalCachedChampions: this.champions.size,
@@ -105,11 +122,28 @@ class DataStore extends EventEmitter {
     fsp.writeFile(path.join(this.dir, 'credits.json'), JSON.stringify(this.credits)).catch(() => {});
   }
 
-  async request(resource) {
+  recordCredits(resource, reason, res) {
+    const cost = res.headers.get('x-credits-cost');
+    const entry = {
+      at: Date.now(),
+      resource,
+      reason,
+      cost: cost == null ? null : Number(cost),
+      remaining: this.credits?.remaining ?? null,
+      status: res.status,
+    };
+    this.creditLog.unshift(entry);
+    this.creditLog.length = Math.min(this.creditLog.length, CREDIT_LOG_MAX);
+    fsp.writeFile(path.join(this.dir, 'credit-log.json'), JSON.stringify(this.creditLog)).catch(() => {});
+    this.log.info(`[credits] -${entry.cost ?? '?'} ${resource} (${reason}) HTTP ${res.status}, ${entry.remaining ?? '?'} left`);
+  }
+
+  async request(resource, reason = '') {
     const key = this.settings.get().apiKey;
     if (!key) throw Object.assign(new Error('尚未設定 API Key'), { code: 'NO_API_KEY' });
     const res = await fetch(`${BASE}/${this.locale}/${resource}.json`, { headers: { 'x-api-key': key } });
     this.updateCredits(res.headers);
+    this.recordCredits(resource, reason, res);
     if (!res.ok) {
       const msg = res.status === 401 ? 'API Key 無效' : res.status === 429 ? '今日額度已用完或請求過快' : `HTTP ${res.status}`;
       throw Object.assign(new Error(`${msg} (${resource})`), { status: res.status });
@@ -155,16 +189,25 @@ class DataStore extends EventEmitter {
   }
 
   async checkVersion() {
-    try {
-      const res = await fetch(`${BASE}/${this.locale}/config.json`);
-      const cfg = await res.json();
-      this.latestVersion = cfg.dataVersion;
-    } catch (e) {
-      this.log.warn('[data] config.json failed', e.message);
+    if (this.checking) return;
+    this.checking = true;
+    this.emitStatus();
+    const [cfg, riot] = await Promise.allSettled([
+      fetch(`${BASE}/${this.locale}/config.json`).then((r) => r.json()),
+      fetch(DDRAGON_VERSIONS).then((r) => r.json()),
+    ]);
+    this.checking = false;
+    if (riot.status === 'fulfilled' && Array.isArray(riot.value)) this.riotPatch = patchOf(riot.value[0]);
+    if (!cfg.value?.dataVersion) {
+      this.log.warn('[data] config.json failed', cfg.reason?.message || 'no dataVersion');
+      this.lastCheck = { at: Date.now(), error: '無法連線到資料伺服器' };
       if (!this.tables) this.error = '無法連線到資料伺服器';
       this.emitStatus();
       return;
     }
+    this.latestVersion = cfg.value.dataVersion;
+    this.lastCheck = { at: Date.now(), error: null };
+    this.log.info(`[data] version check: aramgg ${this.latestVersion}, local ${this.tables?.dataVersion || '-'}, Riot patch ${this.riotPatch || '-'}`);
     if (this.tables?.dataVersion !== this.latestVersion) await this.refreshTables();
     else this.emitStatus();
     this.prefetch();
@@ -188,7 +231,7 @@ class DataStore extends EventEmitter {
           fresh[name] = cached;
           continue;
         }
-        fresh[name] = await this.request(name);
+        fresh[name] = await this.request(name, `資料表：更新到 ${this.latestVersion}`);
         await fsp.writeFile(this.tableFile(name), JSON.stringify(fresh[name]));
       }
       this.setTables(fresh);
@@ -210,7 +253,8 @@ class DataStore extends EventEmitter {
 
   // Returns { dataVersion, data, stale } or null; `stale` means an older game patch.
   // `fetch: false` never spends credits; `refresh` refetches a same-patch entry.
-  async getChampion(id, { fetch: allowFetch = true, refresh = false } = {}) {
+  // `reason` labels the request in the credit log.
+  async getChampion(id, { fetch: allowFetch = true, refresh = false, reason = '' } = {}) {
     id = Number(id);
     if (!id) return null;
     const cached = this.champions.get(id);
@@ -219,7 +263,7 @@ class DataStore extends EventEmitter {
     if (this.inflight.has(id)) return this.inflight.get(id);
     const p = (async () => {
       try {
-        const j = await this.request(`champions/${id}`);
+        const j = await this.request(`champions/${id}`, reason);
         const entry = { dataVersion: j.meta.dataVersion, fetchedAt: Date.now(), data: j.data };
         this.champions.set(id, entry);
         await fsp.writeFile(this.champFile(id), JSON.stringify(entry));
@@ -242,25 +286,42 @@ class DataStore extends EventEmitter {
     if (this.prefetching || !this.tables || !this.settings.get().prefetch || !this.settings.get().apiKey) return;
     this.prefetching = true;
     this.emitStatus();
+    let note = '全部英雄都已是最新資料';
     try {
+      const version = this.currentVersion();
       const byPick = [...this.tables.champions].sort((a, b) => (b.stats?.pickRate || 0) - (a.stats?.pickRate || 0));
       // Missing (or older-patch) champions first, then same-patch refreshes to the newest release.
       const missing = byPick.filter((c) => !this.usable(this.champions.get(c.id)));
-      const outdated = byPick.filter((c) => this.usable(this.champions.get(c.id)) && this.champions.get(c.id).dataVersion !== this.currentVersion());
-      for (const c of [...missing, ...outdated]) {
+      const outdated = byPick.filter((c) => this.usable(this.champions.get(c.id)) && this.champions.get(c.id).dataVersion !== version);
+      const todo = [...missing.map((c) => [c, '背景預載：未快取']), ...outdated.map((c) => [c, `背景預載：更新到 ${version}`])];
+      if (!todo.length) return;
+      this.log.info(`[data] prefetch: ${missing.length} missing, ${outdated.length} older than ${version}`);
+      note = `已預載 ${todo.length} 位英雄`;
+      for (const [i, [c, reason]] of todo.entries()) {
         const s = this.settings.get();
-        if (!s.prefetch) break;
+        if (!s.prefetch) {
+          note = '背景預載已關閉';
+          break;
+        }
         const credits = this.creditsNow();
-        if (credits && credits.remaining - CHAMPION_COST < s.prefetchReserve) break;
+        if (credits && credits.remaining - CHAMPION_COST < s.prefetchReserve) {
+          note = `剩餘 ${credits.remaining} credits，已到保留值 ${s.prefetchReserve}；還有 ${todo.length - i} 位英雄，額度在 UTC 00:00 重置後繼續`;
+          break;
+        }
         try {
-          await this.getChampion(c.id, { refresh: true });
+          await this.getChampion(c.id, { refresh: true, reason });
         } catch (e) {
-          if (e.status === 429 || e.status === 401 || e.code === 'NO_API_KEY') break;
+          if (e.status === 429 || e.status === 401 || e.code === 'NO_API_KEY') {
+            note = `預載中止：${e.message}`;
+            break;
+          }
         }
         await sleep(2500); // stay well under the 60 req/min limit
       }
+      this.log.info('[data] prefetch stopped:', note);
     } finally {
       this.prefetching = false;
+      this.prefetchNote = note;
       this.emitStatus();
     }
   }

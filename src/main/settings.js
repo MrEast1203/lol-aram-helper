@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
 
-const SETTINGS_VERSION = 4;
+const SETTINGS_VERSION = 5;
 // Removed in v3: scanning is manual only and picks are no longer tracked.
 const OBSOLETE = ['augmentLevels', 'autoScan', 'respawnScanMs', 'gameStartScanSec', 'scanSessionMs', 'scanFastMs', 'scanIdleMs', 'buildsShown'];
 
@@ -38,7 +38,8 @@ const DEFAULTS = {
   // Off: closing the main window quits the app.
   closeToTray: false,
   prefetch: true,
-  prefetchReserve: 60,
+  // Credits the background prefetch leaves for champ select and in-game lookups.
+  prefetchReserve: 80,
 };
 
 function readEnvKey(dirs) {
@@ -66,6 +67,8 @@ class Settings extends EventEmitter {
     }
     // v4: closing the window quits by default; the old saved default was hide-to-tray.
     if ((stored.settingsVersion || 1) < 4) delete stored.closeToTray;
+    // v5: the prefetch reserve default went from 60 to 80; keep values the user changed.
+    if ((stored.settingsVersion || 1) < 5 && stored.prefetchReserve === 60) delete stored.prefetchReserve;
     for (const k of OBSOLETE) delete stored[k];
     stored.settingsVersion = SETTINGS_VERSION;
     this.values = { ...DEFAULTS, ...stored, scanRegion: { ...DEFAULTS.scanRegion, ...(stored.scanRegion || {}) } };

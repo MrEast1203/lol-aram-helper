@@ -122,7 +122,7 @@ class Controller extends EventEmitter {
         timer: session.timer?.phase || null,
       },
     });
-    if (championId) this.data.getChampion(championId).catch(() => {});
+    if (championId) this.data.getChampion(championId, { reason: '選角：自己的英雄' }).catch(() => {});
   }
 
   onGameSession(s) {
@@ -251,7 +251,7 @@ class Controller extends EventEmitter {
         },
       });
       this.patch({ windowMode: this.lcu.readWindowMode() });
-      if (championId) this.data.getChampion(championId).catch(() => {});
+      if (championId) this.data.getChampion(championId, { reason: '遊戲中：自己的英雄' }).catch(() => {});
     }
     this.patchGame({
       championId: this.state.game.championId || championId,

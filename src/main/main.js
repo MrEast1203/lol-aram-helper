@@ -310,6 +310,7 @@ function registerIpc() {
     return shell.openPath(controller.scanLogDir());
   });
   ipcMain.handle('data:refresh', () => data.checkVersion());
+  ipcMain.handle('data:creditLog', () => data.creditLog);
   ipcMain.handle('data:clearCache', () => data.clearCache().then(() => data.checkVersion()));
   ipcMain.handle('detector:testFile', async () => {
     const r = await dialog.showOpenDialog(dashboard, { title: '選擇海克斯選擇畫面的截圖', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp'] }] });
