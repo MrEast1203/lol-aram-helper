@@ -47,7 +47,11 @@
   #scanStatus .meta { font-size: 11px; color: var(--muted); }
   #tab, #guides { position: absolute; display: none; overflow-y: auto; border-radius: 10px; }
   #tab .build-panel, #guides .guides-panel { background: rgba(17, 17, 20, 0.92); border: 1px solid var(--brand); border-radius: 10px; padding: 4px 12px 12px; }
-  .drag-bar { cursor: move; text-align: center; font-size: 11px; letter-spacing: 2px; color: var(--muted); padding: 2px 0 4px; margin: 0 -12px; border-bottom: 1px solid var(--line); }
+  .drag-bar { position: relative; cursor: move; text-align: center; font-size: 11px; letter-spacing: 2px; color: var(--muted); padding: 2px 0 4px; margin: 0 -12px; border-bottom: 1px solid var(--line); }
+  .drag-bar .min-btn { position: absolute; right: 4px; top: 0; padding: 0 8px; letter-spacing: 0; font-size: 13px; cursor: pointer; border-radius: 4px; }
+  .drag-bar .min-btn:hover { color: var(--brand-light); background: rgba(255, 92, 138, 0.25); }
+  #tab .build-panel.collapsed, #guides .guides-panel.collapsed { padding-bottom: 4px; }
+  .collapsed .drag-bar { border-bottom: none; padding-bottom: 2px; color: var(--brand-light); }
   .drag-bar:hover, .dragging .drag-bar { color: var(--brand-light); background: rgba(255, 92, 138, 0.12); }
   .dragging { opacity: 0.85; }
   .guide-box.hot { border-color: #ffd166; box-shadow: 0 0 10px rgba(255, 209, 102, .5); }

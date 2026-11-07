@@ -910,7 +910,7 @@ function renderSettings() {
             h('select', { onchange: (e) => save({ tabPanelSide: e.target.value }) }, h('option', { value: 'right', selected: s.tabPanelSide === 'right' }, t('出裝在右側')), h('option', { value: 'left', selected: s.tabPanelSide === 'left' }, t('出裝在左側'))),
             Object.keys(s.tabPanelPos || {}).length ? h('button', { onclick: () => save({ tabPanelPos: {} }).then(render) }, t('重設拖曳位置')) : null
           ),
-          t('遊戲中按住 Tab，拖曳面板頂端的「⠿ 拖曳移動」即可移動並記住位置；雙擊它回到預設位置。')
+          t('遊戲中按住 Tab，拖曳面板頂端的「⠿ 拖曳移動」即可移動並記住位置；雙擊它回到預設位置，點右端的「—」可以最小化。')
         ),
         field(t('Tab 面板寬度'), numInput('tabPanelWidth', { min: 280, step: 10 })),
         field(t('Tab 面板上邊距（預設位置）'), numInput('tabPanelTop', { min: 0, step: 10 })),

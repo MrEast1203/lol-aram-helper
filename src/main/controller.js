@@ -321,7 +321,7 @@ class Controller extends EventEmitter {
       });
       const ms = Date.now() - startedAt;
       if (save) this.writeScanLog(save, r, ms);
-      this.log.info(`[scan] ${r.offers.length} offers in ${ms} ms (OCR ${r.ms} ms, ${r.swept ? 'full sweep' : 'title row'})`);
+      this.log.info(`[scan] ${r.offers.length} offers in ${ms} ms (OCR ${r.ms} ms, ${r.swept ? 'full sweep' : 'title row'}${r.cardRetries ? `, ${r.cardRetries} card retries` : ''})`);
       this.patch({
         offers: r.offers.map((o) => this.offerToView(o)),
         scan: { active: false, found: r.offers.length, ms, at: Date.now() },

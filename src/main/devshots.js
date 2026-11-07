@@ -55,6 +55,11 @@ async function runDevShots(win, dir, overlay, champPanel) {
     await sleep(600);
     await shot(overlay, dir, 'overlay-dragged');
     await overlay.webContents.executeJavaScript('window.api.setSettings({ tabPanelPos: {} })').catch(() => {});
+    // Minimize the builds panel with its bar button, capture, then expand it again.
+    await overlay.webContents.executeJavaScript(`document.querySelector('#tab .min-btn')?.click()`).catch(() => {});
+    await sleep(600);
+    await shot(overlay, dir, 'overlay-minimized');
+    await overlay.webContents.executeJavaScript('window.api.setSettings({ tabPanelCollapsed: {} })').catch(() => {});
   }
   for (const [name, js] of STEPS) {
     await win.webContents.executeJavaScript(js).catch((e) => console.warn('[devshots]', name, e.message));

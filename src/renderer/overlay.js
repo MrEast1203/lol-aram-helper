@@ -65,23 +65,30 @@ function renderTab() {
     return;
   }
   const championId = state.game.championId;
-  const panel = buildPanel(db, {
-    championId,
-    detail,
-    stale: detail?.stale,
-    choice: settings.buildChoice?.[championId],
-    onSelectBuild: (_i, tag) => api.setSettings({ buildChoice: { ...settings.buildChoice, [championId]: tag } }),
-  });
+  const panel = collapsed('builds')
+    ? h('div', { class: 'build-panel collapsed' })
+    : buildPanel(db, {
+        championId,
+        detail,
+        stale: detail?.stale,
+        choice: settings.buildChoice?.[championId],
+        onSelectBuild: (_i, tag) => api.setSettings({ buildChoice: { ...settings.buildChoice, [championId]: tag } }),
+      });
   panel.prepend(dragBar('builds'));
   builds.replaceChildren(panel);
   if (drag?.key !== 'builds') placePanel('builds', builds);
   const gPanel = guidesPanel(db, guides, championId, (state.offers || []).map((o) => o.augmentId));
   if (gPanel) {
+    if (collapsed('guides')) gPanel.replaceChildren();
+    gPanel.classList.toggle('collapsed', collapsed('guides'));
     gPanel.prepend(dragBar('guides'));
     guideEl.replaceChildren(gPanel);
     if (drag?.key !== 'guides') placePanel('guides', guideEl);
   } else guideEl.style.display = 'none';
 }
+
+const collapsed = (key) => !!settings.tabPanelCollapsed?.[key];
+const PANEL_TITLES = { builds: '推薦出裝', guides: '📘 自訂攻略' };
 
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 const PANELS = { builds: 'tab', guides: 'guides' };
@@ -96,8 +103,27 @@ function placePanel(key, el) {
   Object.assign(el.style, { display: 'block', width: w + 'px', left: x + 'px', top: y + 'px', maxHeight: innerHeight - y - 12 + 'px' });
 }
 
+// Top bar of a Tab panel: drag to move, double-click to reset, the button minimizes
+// the panel to just this bar (remembered per panel).
 function dragBar(key) {
-  return h('div', { class: 'drag-bar', title: t('拖曳移動 · 雙擊回到預設位置'), onmousedown: (e) => startDrag(e, key), ondblclick: () => savePanelPos(key, null) }, t('⠿ 拖曳移動'));
+  const min = collapsed(key);
+  const toggle = h(
+    'span',
+    {
+      class: 'min-btn',
+      title: min ? t('展開') : t('最小化'),
+      onmousedown: (e) => e.stopPropagation(),
+      ondblclick: (e) => e.stopPropagation(),
+      onclick: () => api.setSettings({ tabPanelCollapsed: { ...settings.tabPanelCollapsed, [key]: !min } }),
+    },
+    min ? '▢' : '—'
+  );
+  return h(
+    'div',
+    { class: 'drag-bar', title: t('拖曳移動 · 雙擊回到預設位置'), onmousedown: (e) => startDrag(e, key), ondblclick: () => savePanelPos(key, null) },
+    min ? `⠿ ${t(PANEL_TITLES[key])}` : t('⠿ 拖曳移動'),
+    toggle
+  );
 }
 
 // Dragging a panel's top bar moves it; the spot is saved as fractions of the game window.
@@ -218,7 +244,7 @@ let lastKey = '';
 async function render() {
   await ensureDetail();
   // Avoid rebuilding the DOM on every live-data tick.
-  const key = JSON.stringify([state.offers, state.tabHeld, state.game?.championId, state.toast, state.scan, !!state.game, detailFor, !!detail]);
+  const key = JSON.stringify([state.offers, state.tabHeld, state.game?.championId, state.toast, state.scan, !!state.game, detailFor, !!detail, settings.tabPanelCollapsed]);
   if (key === lastKey) return;
   lastKey = key;
   renderBadges();

@@ -128,6 +128,26 @@ test('scan reports progress per strip and falls back to a sweep', async () => {
   assert.ok(Math.abs(settings.get().titleRowY - 511 / 1080) < 0.01, 'row re-learned');
 });
 
+test('a card title missed in the strip is read again in a crop around its column', async () => {
+  const settings = mockSettings({ titleRowY: 511 / 1080 });
+  const crops = [];
+  const native = {
+    ocr: async (rect, lang, opts) => {
+      if (rect.w === 1920) return { lines: [line('裝甲衝擊', 870, 500), line('巨人', 1240, 500)], ms: 1 }; // 衝鋒 at x≈500 skipped
+      crops.push(rect);
+      // Like Windows OCR: the left card reads only in the second crop size.
+      const hit = rect.x < 700 && crops.filter((r) => r.x < 700).length === 2;
+      return { lines: hit ? [line('衝鋒', 495, 500)] : [], ms: 1 };
+    },
+  };
+  const det = new AugmentDetector({ native, settings });
+  det.setAugments(AUGS);
+  const r = await det.scan({ x: 0, y: 0, w: 1920, h: 1080 });
+  assert.deepEqual(r.offers.map((o) => o.augmentId), [1050, 3049, 1060]);
+  assert.equal(r.cardRetries, 2);
+  assert.ok(crops.every((c) => c.w < 400), 'only narrow crops');
+});
+
 test('helper.ps1 is ASCII-only (PowerShell 5.1 reads BOM-less scripts as the ANSI codepage)', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '../src/main/helper.ps1'), 'utf8');
   assert.ok(!/[^\x00-\x7F]/.test(src));

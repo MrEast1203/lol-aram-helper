@@ -1,7 +1,12 @@
 // OCR-based augment card reader, run on demand (F7 / the overlay button).
 // Augment offers are never written to logs or exposed by the LCU or the Live Client
 // API while the game runs, so the screen itself is read instead.
-const { buildMatcher, detectOffers } = require('./matcher');
+const { buildMatcher, detectOffers, findCandidates } = require('./matcher');
+
+const centerX = (b) => b.x + b.w / 2;
+// Distance between card centers as a fraction of the game height (the client scales
+// its UI with height; 367 px at 1080p).
+const CARD_SPACING = 0.34;
 
 class AugmentDetector {
   constructor({ native, settings, log = console }) {
@@ -80,9 +85,47 @@ class AugmentDetector {
       found = detectOffers(this.matcher, res.lines, opts);
       swept = true;
     }
+    let cardRetries = 0;
+    if (found.offers.length === 2) {
+      const r = await this.readMissingCard(gameRect, rect, found.offers, { lang: s.ocrLang, scale: s.ocrScale, file });
+      cardRetries = r.tries;
+      if (r.lines.length) {
+        res = { lines: [...res.lines, ...r.lines], ms: res.ms + r.ms };
+        found = detectOffers(this.matcher, res.lines, opts);
+      } else res.ms += r.ms;
+    }
     const offers = found.offers.length >= s.minCardMatches ? found.offers : [];
     if (learn) this.learnTitleRow(gameRect, offers);
-    return { offers, candidates: found.candidates, lines: res.lines, ms: res.ms, rect, swept };
+    return { offers, candidates: found.candidates, lines: res.lines, ms: res.ms, rect, swept, cardRetries };
+  }
+
+  // Windows OCR sometimes skips a short title (seen with 溢流) in the wide title strip,
+  // yet reads it in a narrow crop around its own card, though not at every crop size.
+  // With two cards found, the third card's column follows from their spacing, so its
+  // title is read again in a few crops until one matches an augment name.
+  async readMissingCard(gameRect, rect, offers, { lang, scale, file }) {
+    const [a, b] = offers.map((o) => centerX(o.box)).sort((x, y) => x - y);
+    const gap = b - a;
+    const middle = gap > gameRect.h * CARD_SPACING * 1.5;
+    const spacing = middle ? gap / 2 : gap;
+    const cy = offers.reduce((sum, o) => sum + o.box.y + o.box.h / 2, 0) / offers.length;
+    const out = { lines: [], ms: 0, tries: 0 };
+    for (const cx of middle ? [a + spacing] : [a - spacing, b + spacing]) {
+      for (const hw of [0.33, 0.41].map((f) => Math.round(spacing * f))) {
+        const x = Math.round(cx - hw);
+        if (x < rect.x || x + 2 * hw > rect.x + rect.w) continue;
+        for (const bh of [0.08, 0.11].map((f) => Math.round(gameRect.h * f))) {
+          const r = await this.native.ocr({ x, y: rect.y, w: 2 * hw, h: rect.h }, lang, { scale, file, bands: [{ y: Math.round(cy - rect.y - bh / 2), h: bh }], thresholds: [0] });
+          out.ms += r.ms;
+          out.tries++;
+          if (findCandidates(this.matcher, r.lines).some((c) => Math.abs(c.box.y + c.box.h / 2 - cy) <= gameRect.h * 0.03)) {
+            out.lines.push(...r.lines);
+            return out;
+          }
+        }
+      }
+    }
+    return out;
   }
 
   learnTitleRow(gameRect, offers) {
