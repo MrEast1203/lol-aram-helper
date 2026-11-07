@@ -1,6 +1,7 @@
 // In-game overlay: tier badges over augment cards, scan progress, Tab panels, toasts.
 import { api, h, pct, loadDb, augmentInfo, guidesForAugment } from './common.js';
 import { buildPanel, guidesPanel } from './buildview.js';
+import { t } from './i18n.js';
 
 let db = await loadDb();
 let settings = await api.getSettings();
@@ -44,11 +45,11 @@ function renderBadges() {
           k === bestIdx && offers.length > 1 ? h('span', { class: 'best' }, '★') : null,
           h('span', { class: `tier tier-${info.tier ?? 'x'}` }, info.tier != null ? 'T' + info.tier : '—'),
           // No augment win rates: Riot's League policy forbids showing them in any product.
-          info.rank != null ? h('span', null, `#${info.rank}/${info.total}`) : h('span', { class: 'sub' }, '全域')
+          info.rank != null ? h('span', null, `#${info.rank}/${info.total}`) : h('span', { class: 'sub' }, t('全域'))
         ),
-        info.scope === 'champion' && info.games ? h('div', { class: 'sub' }, `此英雄 ${info.games} 場 · 選取 ${pct(info.pickRate)}`) : null,
-        o.inferred ? h('div', { class: 'guess' }, `推測：${db.aug(o.augmentId)?.name || ''}`) : null,
-        g.length ? h('div', { class: 'guide' }, '📘 ' + g.map((x) => x.name).join('、')) : null
+        info.scope === 'champion' && info.games ? h('div', { class: 'sub' }, t('此英雄 {games} 場 · 選取 {pick}', { games: info.games, pick: pct(info.pickRate) })) : null,
+        o.inferred ? h('div', { class: 'guess' }, t('推測：{name}', { name: db.aug(o.augmentId)?.name || '' })) : null,
+        g.length ? h('div', { class: 'guide' }, '📘 ' + g.map((x) => x.name).join(t('、'))) : null
       )
     );
   });
@@ -96,7 +97,7 @@ function placePanel(key, el) {
 }
 
 function dragBar(key) {
-  return h('div', { class: 'drag-bar', title: '拖曳移動 · 雙擊回到預設位置', onmousedown: (e) => startDrag(e, key), ondblclick: () => savePanelPos(key, null) }, '⠿ 拖曳移動');
+  return h('div', { class: 'drag-bar', title: t('拖曳移動 · 雙擊回到預設位置'), onmousedown: (e) => startDrag(e, key), ondblclick: () => savePanelPos(key, null) }, t('⠿ 拖曳移動'));
 }
 
 // Dragging a panel's top bar moves it; the spot is saved as fractions of the game window.
@@ -142,16 +143,20 @@ function renderScanStatus() {
     return;
   }
   el.style.display = 'block';
-  const keys = `${settings.scanHotkey} 重新掃描 · ${settings.hideHotkey} 隱藏`;
+  const keys = t('{scan} 重新掃描 · {hide} 隱藏', { scan: settings.scanHotkey, hide: settings.hideHotkey });
   if (s.active) {
     const pctDone = Math.round((100 * s.progress) / Math.max(1, s.total));
     el.replaceChildren(
-      h('div', { class: 'label' }, '🔍 掃描海克斯中…'),
+      h('div', { class: 'label' }, t('🔍 掃描海克斯中…')),
       h('div', { class: 'bar' }, h('div', { class: 'fill', style: { width: `${Math.max(6, pctDone)}%` } })),
       h('div', { class: 'meta' }, `${s.progress}/${s.total}`)
     );
   } else {
-    const text = s.error ? `掃描失敗：${s.error}` : s.found ? `✓ 找到 ${s.found} 個海克斯 · ${(s.ms / 1000).toFixed(2)} 秒 · ${keys}` : `✗ 沒偵測到海克斯選擇畫面 · 截圖已存到掃描紀錄`;
+    const text = s.error
+      ? t('掃描失敗：{error}', { error: s.error })
+      : s.found
+        ? t('✓ 找到 {n} 個海克斯 · {sec} 秒 · {keys}', { n: s.found, sec: (s.ms / 1000).toFixed(2), keys })
+        : t('✗ 沒偵測到海克斯選擇畫面 · 截圖已存到掃描紀錄');
     el.replaceChildren(h('div', { class: `label ${s.found ? 'ok' : 'bad'}` }, text));
     statusTimer = setTimeout(renderScanStatus, 3000 - (Date.now() - s.at));
   }
@@ -198,7 +203,7 @@ function renderScanButton() {
   Object.assign(scanBtn.style, { display: 'block', left: `${settings.scanButtonX * 100}vw`, top: `${settings.scanButtonY * 100}vh` });
   const busy = !!state.scan?.active;
   scanBtn.classList.toggle('busy', busy);
-  scanBtn.textContent = busy ? '🔍 掃描中…' : `🔍 掃描海克斯 (${settings.scanHotkey})`;
+  scanBtn.textContent = busy ? t('🔍 掃描中…') : t('🔍 掃描海克斯 ({key})', { key: settings.scanHotkey });
 }
 
 function renderToast() {

@@ -2,6 +2,7 @@
 // builds and augment ranking.
 import { api, h, pct, tierBadge, loadDb } from './common.js';
 import { buildBlock, buildSelector, buildsOf, chosenBuildIndex, spellsRow } from './buildview.js';
+import { t } from './i18n.js';
 
 let db = await loadDb();
 let settings = await api.getSettings();
@@ -43,7 +44,7 @@ async function render(fetchViewing = false) {
   const main = document.getElementById('main');
   const cs = state.champSelect;
   if (!cs) {
-    main.replaceChildren(h('div', { class: 'muted' }, '等待選角…'));
+    main.replaceChildren(h('div', { class: 'muted' }, t('等待選角…')));
     return;
   }
   const myId = cs.championId;
@@ -77,18 +78,18 @@ async function render(fetchViewing = false) {
         { class: 'row' },
         db.champIcon(id, 52),
         h('div', { class: 'col grow', style: { gap: '2px' } }, h('b', { style: { fontSize: '16px', color: 'var(--brand-light)' } }, champ?.name || '—'), h('span', { class: 'muted' }, champ?.title || '')),
-        h('div', { class: 'col', style: { alignItems: 'flex-end', gap: '3px' } }, tierBadge(champ?.stats?.tier), h('span', { class: 'muted' }, `排名 #${db.champRank.get(id) || '—'}/${db.champions.length}`))
+        h('div', { class: 'col', style: { alignItems: 'flex-end', gap: '3px' } }, tierBadge(champ?.stats?.tier), h('span', { class: 'muted' }, t('排名 #{rank}/{total}', { rank: db.champRank.get(id) || '—', total: db.champions.length })))
       ),
-      h('div', { class: 'row muted' }, `勝率 ${pct(champ?.stats?.winRate)} · 選取率 ${pct(champ?.stats?.pickRate)}`, id !== myId ? h('span', { class: 'tag' }, '板凳/隊友') : null)
+      h('div', { class: 'row muted' }, t('勝率 {win} · 選取率 {pick}', { win: pct(champ?.stats?.winRate), pick: pct(champ?.stats?.pickRate) }), id !== myId ? h('span', { class: 'tag' }, t('板凳/隊友')) : null)
     ),
     cs.bench.length || cs.team.length
       ? h(
           'div',
           { class: 'card col' },
-          h('h3', null, '板凳 / 隊友'),
-          cs.bench.length ? h('div', { class: 'muted' }, '板凳（綠色勝率 = 比你目前英雄更高 tier）') : null,
+          h('h3', null, t('板凳 / 隊友')),
+          cs.bench.length ? h('div', { class: 'muted' }, t('板凳（綠色勝率 = 比你目前英雄更高 tier）')) : null,
           cs.bench.length ? h('div', { class: 'pool' }, cs.bench.map((b) => poolItem(b, false, myTier))) : null,
-          h('div', { class: 'muted' }, '我方'),
+          h('div', { class: 'muted' }, t('我方')),
           h('div', { class: 'pool' }, cs.team.filter((t) => t.championId).map((t) => poolItem(t.championId, t.isMe, myTier)))
         )
       : null,
@@ -96,7 +97,7 @@ async function render(fetchViewing = false) {
       ? h(
           'div',
           { class: 'card col' },
-          h('h3', null, '召喚師技能'),
+          h('h3', null, t('召喚師技能')),
           (build.summonerSpells || []).slice(0, 3).map((s) =>
             h(
               'div',
@@ -109,22 +110,22 @@ async function render(fetchViewing = false) {
                       style: { marginLeft: 'auto', padding: '2px 8px' },
                       onclick: async (e) => {
                         const r = await api.applySpells(s.summonerSpellIds[0], s.summonerSpellIds[1]);
-                        e.target.textContent = r.error ? '失敗' : '已套用';
+                        e.target.textContent = r.error ? t('失敗') : t('已套用');
                       },
                     },
-                    '套用'
+                    t('套用')
                   )
                 : null
             )
           )
         )
-      : h('div', { class: 'card muted' }, detail?.error ? `詳情載入失敗：${detail.error}` : id === myId ? '載入英雄詳情中…' : '點擊後載入詳情（2 credits）'),
-    champGuides.length ? h('div', { class: 'card col' }, h('h3', null, '📘 自訂攻略'), champGuides.map((g) => h('div', null, g.name))) : null,
+      : h('div', { class: 'card muted' }, detail?.error ? t('詳情載入失敗：{error}', { error: detail.error }) : id === myId ? t('載入英雄詳情中…') : t('點擊後載入詳情（2 credits）')),
+    champGuides.length ? h('div', { class: 'card col' }, h('h3', null, t('📘 自訂攻略')), champGuides.map((g) => h('div', null, g.name))) : null,
     build
       ? h(
           'div',
           { class: 'card col' },
-          h('h3', null, '出裝'),
+          h('h3', null, t('出裝')),
           builds.length > 1 ? buildSelector(db, builds, buildIndex, selectBuild) : null,
           buildBlock(db, build, buildIndex, { head: builds.length <= 1 })
         )
@@ -133,13 +134,13 @@ async function render(fetchViewing = false) {
       ? h(
           'div',
           { class: 'card col' },
-          h('h3', null, '推薦海克斯（此英雄）'),
+          h('h3', null, t('推薦海克斯（此英雄）')),
           topAugs.map((a) => h('div', { class: 'aug-line' }, db.augIcon(a.id, 26), h('span', { class: 'name' }, a.name), tierBadge(a.stats.tier), h('span', { class: 'muted' }, `#${a.stats.rank}`)))
         )
       : null
   );
   const d = state.data;
-  document.getElementById('footer').textContent = `資料 ${d.dataVersion || '—'} · 剩餘 credits ${d.credits?.remaining ?? '—'}`;
+  document.getElementById('footer').textContent = t('資料 {version} · 剩餘 credits {left}', { version: d.dataVersion || '—', left: d.credits?.remaining ?? '—' });
 }
 
 let lastKey = '';

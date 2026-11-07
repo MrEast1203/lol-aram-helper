@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('api', {
   hideOffers: () => invoke('scan:hide'),
   refreshData: () => invoke('data:refresh'),
   creditLog: () => invoke('data:creditLog'),
+  cacheIndex: () => invoke('data:cacheIndex'),
+  i18n: () => invoke('app:i18n'),
   clearCache: () => invoke('data:clearCache'),
   testScan: () => invoke('detector:test'),
   testScanFile: () => invoke('detector:testFile'),

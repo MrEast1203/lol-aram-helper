@@ -14,6 +14,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const { EventEmitter } = require('events');
+const { t } = require('./i18n');
 
 const BASE = 'https://data.dtodo.cn/api/v1';
 // Riot's public patch list, only to tell the player when aramgg is behind the game.
@@ -38,13 +39,13 @@ class DataStore extends EventEmitter {
     this.latestVersion = null;
     this.credits = null; // { remaining, daily, usedToday, day }
     this.creditLog = []; // newest first: { at, resource, reason, cost, remaining, status }
-    this.lastCheck = null; // { at, error }
+    this.lastCheck = null; // { at, error } (error untranslated)
     this.riotPatch = null; // latest live patch from Data Dragon, e.g. "16.22"
     this.error = null;
     this.loading = false;
     this.checking = false;
     this.prefetching = false;
-    this.prefetchNote = null; // why the last prefetch stopped
+    this.prefetchNote = null; // why the last prefetch stopped: [text, args] for t()
   }
 
   get locale() {
@@ -73,7 +74,7 @@ class DataStore extends EventEmitter {
       gamePatch: this.tables?.gamePatch || null,
       latestVersion: this.latestVersion,
       riotPatch: this.riotPatch,
-      lastCheck: this.lastCheck,
+      lastCheck: this.lastCheck && { ...this.lastCheck, error: this.lastCheck.error && t(this.lastCheck.error) },
       hasApiKey: !!this.settings.get().apiKey,
       credits,
       creditLogAt: this.creditLog[0]?.at || null,
@@ -81,11 +82,16 @@ class DataStore extends EventEmitter {
       loading: this.loading,
       checking: this.checking,
       prefetching: this.prefetching,
-      prefetchNote: this.prefetchNote,
+      prefetchNote: this.prefetchNote && t(...this.prefetchNote),
       cachedChampions: [...this.champions.values()].filter((c) => this.usable(c)).length,
       latestChampions: [...this.champions.values()].filter((c) => c.dataVersion === this.currentVersion()).length,
       totalCachedChampions: this.champions.size,
     };
+  }
+
+  // { [championId]: dataVersion } of every cached champion, for the champion list.
+  cacheIndex() {
+    return Object.fromEntries([...this.champions].map(([id, e]) => [id, e.dataVersion]));
   }
 
   // Champion details stay valid for the whole game patch (16.21.x); a new data
@@ -140,12 +146,12 @@ class DataStore extends EventEmitter {
 
   async request(resource, reason = '') {
     const key = this.settings.get().apiKey;
-    if (!key) throw Object.assign(new Error('尚未設定 API Key'), { code: 'NO_API_KEY' });
+    if (!key) throw Object.assign(new Error(t('尚未設定 API Key')), { code: 'NO_API_KEY' });
     const res = await fetch(`${BASE}/${this.locale}/${resource}.json`, { headers: { 'x-api-key': key } });
     this.updateCredits(res.headers);
     this.recordCredits(resource, reason, res);
     if (!res.ok) {
-      const msg = res.status === 401 ? 'API Key 無效' : res.status === 429 ? '今日額度已用完或請求過快' : `HTTP ${res.status}`;
+      const msg = res.status === 401 ? t('API Key 無效') : res.status === 429 ? t('今日額度已用完或請求過快') : `HTTP ${res.status}`;
       throw Object.assign(new Error(`${msg} (${resource})`), { status: res.status });
     }
     return res.json();
@@ -201,7 +207,7 @@ class DataStore extends EventEmitter {
     if (!cfg.value?.dataVersion) {
       this.log.warn('[data] config.json failed', cfg.reason?.message || 'no dataVersion');
       this.lastCheck = { at: Date.now(), error: '無法連線到資料伺服器' };
-      if (!this.tables) this.error = '無法連線到資料伺服器';
+      if (!this.tables) this.error = t('無法連線到資料伺服器');
       this.emitStatus();
       return;
     }
@@ -231,7 +237,7 @@ class DataStore extends EventEmitter {
           fresh[name] = cached;
           continue;
         }
-        fresh[name] = await this.request(name, `資料表：更新到 ${this.latestVersion}`);
+        fresh[name] = await this.request(name, '資料表：新版本');
         await fsp.writeFile(this.tableFile(name), JSON.stringify(fresh[name]));
       }
       this.setTables(fresh);
@@ -286,39 +292,44 @@ class DataStore extends EventEmitter {
     if (this.prefetching || !this.tables || !this.settings.get().prefetch || !this.settings.get().apiKey) return;
     this.prefetching = true;
     this.emitStatus();
-    let note = '全部英雄都已是最新資料';
+    // Notes and credit-log reasons stay Chinese here and are translated for display.
+    let note = ['全部英雄都已是最新資料'];
     try {
       const version = this.currentVersion();
       const byPick = [...this.tables.champions].sort((a, b) => (b.stats?.pickRate || 0) - (a.stats?.pickRate || 0));
       // Missing (or older-patch) champions first, then same-patch refreshes to the newest release.
       const missing = byPick.filter((c) => !this.usable(this.champions.get(c.id)));
       const outdated = byPick.filter((c) => this.usable(this.champions.get(c.id)) && this.champions.get(c.id).dataVersion !== version);
-      const todo = [...missing.map((c) => [c, '背景預載：未快取']), ...outdated.map((c) => [c, `背景預載：更新到 ${version}`])];
+      const todo = [...missing.map((c) => [c, '背景預載：未快取']), ...outdated.map((c) => [c, '背景預載：更新舊資料'])];
       if (!todo.length) return;
       this.log.info(`[data] prefetch: ${missing.length} missing, ${outdated.length} older than ${version}`);
-      note = `已預載 ${todo.length} 位英雄`;
+      note = ['已預載 {n} 位英雄', { n: todo.length }];
       for (const [i, [c, reason]] of todo.entries()) {
         const s = this.settings.get();
         if (!s.prefetch) {
-          note = '背景預載已關閉';
+          note = ['背景預載已關閉'];
           break;
         }
         const credits = this.creditsNow();
         if (credits && credits.remaining - CHAMPION_COST < s.prefetchReserve) {
-          note = `剩餘 ${credits.remaining} credits，已到保留值 ${s.prefetchReserve}；還有 ${todo.length - i} 位英雄，額度在 UTC 00:00 重置後繼續`;
+          const leftMissing = Math.max(0, missing.length - i);
+          note = [
+            '剩餘 {left} credits，已到保留值 {reserve}；還有 {missing} 位未快取、{outdated} 位舊資料待更新到 {version}，額度在 UTC 00:00 重置後繼續。',
+            { left: credits.remaining, reserve: s.prefetchReserve, missing: leftMissing, outdated: todo.length - i - leftMissing, version },
+          ];
           break;
         }
         try {
           await this.getChampion(c.id, { refresh: true, reason });
         } catch (e) {
           if (e.status === 429 || e.status === 401 || e.code === 'NO_API_KEY') {
-            note = `預載中止：${e.message}`;
+            note = ['預載中止：{error}', { error: e.message }];
             break;
           }
         }
         await sleep(2500); // stay well under the 60 req/min limit
       }
-      this.log.info('[data] prefetch stopped:', note);
+      this.log.info('[data] prefetch stopped:', t(...note));
     } finally {
       this.prefetching = false;
       this.prefetchNote = note;

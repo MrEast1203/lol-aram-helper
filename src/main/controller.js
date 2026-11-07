@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
+const { t } = require('./i18n');
 const { requestJson } = require('./http');
 
 const LIVE_URL = 'https://127.0.0.1:2999/liveclientdata/allgamedata';
@@ -306,8 +307,8 @@ class Controller extends EventEmitter {
   async manualScan() {
     const win = this.state.gameWindow;
     if (!this.state.game || this.scanning) return;
-    if (!win) return this.patch({ toast: { text: '找不到遊戲視窗', at: Date.now() } });
-    if (!this.detector.matcher) return this.patch({ toast: { text: '海克斯資料尚未載入', at: Date.now() } });
+    if (!win) return this.patch({ toast: { text: t('找不到遊戲視窗'), at: Date.now() } });
+    if (!this.detector.matcher) return this.patch({ toast: { text: t('海克斯資料尚未載入'), at: Date.now() } });
     this.scanning = true;
     const startedAt = Date.now();
     this.patch({ scan: { active: true, progress: 0, total: 1, at: startedAt } });
@@ -374,7 +375,7 @@ class Controller extends EventEmitter {
   // Manual OCR test from the dashboard: an image file, the game window, or the primary screen.
   // Results are only reported back, never shown on the overlay.
   async testScan(fallbackRect, imagePath, { file, save } = {}) {
-    if (!this.detector.matcher) throw new Error('海克斯資料尚未載入');
+    if (!this.detector.matcher) throw new Error(t('海克斯資料尚未載入'));
     let rect = fallbackRect;
     let inGame = false;
     if (!file) {

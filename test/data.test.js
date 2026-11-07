@@ -74,5 +74,5 @@ test('prefetch stops at the reserve and says why', async () => {
   await store.prefetch();
   assert.equal(store.creditLog.length, 1);
   assert.equal(store.creditLog[0].reason, '背景預載：未快取');
-  assert.match(store.prefetchNote, /剩餘 80 credits，已到保留值 80；還有 1 位英雄/);
+  assert.match(store.status().prefetchNote, /剩餘 80 credits，已到保留值 80；還有 1 位未快取、0 位舊資料待更新到 16.21.5/);
 });

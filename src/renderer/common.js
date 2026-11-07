@@ -1,4 +1,6 @@
 // Shared renderer helpers: DOM builder, data indexes and build summarising.
+import { t } from './i18n.js';
+
 export const api = window.api;
 
 export function h(tag, props, ...children) {
@@ -34,7 +36,7 @@ export function tierBadge(tier, prefix = 'T') {
   return h('span', { class: `tier tier-${tier}` }, prefix + tier);
 }
 
-export const RARITY = { silver: '白銀', gold: '黃金', prismatic: '稜鏡' };
+export const RARITY = { silver: t('白銀'), gold: t('黃金'), prismatic: t('稜鏡') };
 
 export function icon(url, { size = 32, title, cls = '', fallback } = {}) {
   const img = h('img', { class: `icon ${cls}`, src: url || '', width: size, height: size, title, loading: 'lazy', draggable: 'false' });

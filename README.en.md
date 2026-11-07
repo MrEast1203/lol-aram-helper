@@ -6,14 +6,14 @@ An overlay for League of Legends **ARAM: Mayhem**. Data source: the [aramgg.com]
 
 > An unofficial personal tool, not affiliated with Riot Games or aramgg. Please read the [policy notes](#policy-notes) and the [disclaimer](#disclaimer) first.
 
-The app's interface is in Traditional Chinese, and augment detection expects a zh-TW game client by default.
+The interface is available in English and Traditional Chinese (Settings → 介面語言 / Language; by default it follows the Windows language). Augment detection expects a zh-TW game client by default: augment names are matched in the data language, which has to match the game.
 
 ## Features
 
 1. **Champ select panel**: shown next to the client during champ select. Your champion's tier, overall rank, win/pick rate; then the tiers of bench and teammate champions (for swaps); recommended summoner spells (one-click apply); builds (with a build picker); and finally the champion's recommended augments.
 2. **In-game augments**: press **F7** on the augment selection screen and each card gets a badge with its champion-specific tier and rank (#3/121). The top pick is marked ★, and augments that have a custom guide show 📘. Press F7 again after a reroll, **F8** to hide. (Augment win rates are not shown, per Riot policy; see [policy notes](#policy-notes).)
-3. **Hold Tab**: one side shows the recommended build (spells, starting items, core, later items, situational items, skill order) with a dropdown to switch builds (remembered per champion, shared with the champ select panel); the other side always shows your **custom guides** for that champion. While holding Tab you can click the dropdown with the mouse, and drag a panel by its "⠿ 拖曳移動" bar to move it (the position is remembered; double-click the bar to reset).
-   - Starting items are sorted by games; sets with fewer than 30 games show "樣本不足" (sample too small), since aramgg's starting-item data is mostly sparse.
+3. **Hold Tab**: one side shows the recommended build (spells, starting items, core, later items, situational items, skill order) with a dropdown to switch builds (remembered per champion, shared with the champ select panel); the other side always shows your **custom guides** for that champion. While holding Tab you can click the dropdown with the mouse, and drag a panel by its "⠿ Drag" bar to move it (the position is remembered; double-click the bar to reset).
+   - Starting items are sorted by games; sets with fewer than 30 games show "Too few games", since aramgg's starting-item data is mostly sparse.
 4. **Custom guides**: e.g. "Armor Shock → Cloth Armor › Chain Vest › Thornmail". Can be limited to champions, imported/exported as JSON. A guide is highlighted when one of its augments is on screen.
 5. **Match history**: after each game, the augments you actually picked and the result are synced from match history.
 
@@ -25,7 +25,7 @@ The app's interface is in Traditional Chinese, and augment detection expects a z
    - Windows 10/11 (64-bit).
    - The Windows "Chinese (Traditional, Taiwan)" language with its OCR component: **Settings → Time & language → Language & region → Add a language**.
    - The game language must match the data language (zh-TW by default) so augment names can be matched by OCR.
-3. Get **your own** aramgg API key at [data.dtodo.cn/developer.html](https://data.dtodo.cn/developer.html) and paste it on the app's Settings (設定) page.
+3. Get **your own** aramgg API key at [data.dtodo.cn/developer.html](https://data.dtodo.cn/developer.html) and paste it on the app's Settings page.
 
 ## Before you play
 
@@ -51,7 +51,7 @@ These are design principles, not an endorsement or guarantee by Riot; see the [d
 - The LCU (League Client API) is **not** officially supported by Riot for third-party applications and may change or break at any time.
 - Augment detection reads the screen (OCR); it is not a data service provided by Riot, and Riot has not stated a position on this approach.
 - Riot requires products that serve players to be registered on the [Riot Developer Portal](https://developer.riotgames.com). This project is registered (App ID 900373) and waiting for Riot's review.
-- As Riot requires, the legal notice below is shown in the app (at the bottom of the main window and under Settings → 關於與免責聲明).
+- As Riot requires, the legal notice below is shown in the app (at the bottom of the main window and under Settings → About and disclaimer).
 
 ### aramgg Data API
 
@@ -62,11 +62,11 @@ These are design principles, not an endorsement or guarantee by Riot; see the [d
 
 ## How in-game augment detection works
 
-- Press **F7** on the augment selection screen, or click the "🔍 掃描海克斯" button on the left of the screen (clicking it doesn't take focus from the game). A progress bar appears at the top.
+- Press **F7** on the augment selection screen, or click the "🔍 Scan augments" button on the left of the screen (clicking it doesn't take focus from the game). A progress bar appears at the top.
 - The results stay until the next F7 (e.g. after a reroll) replaces them, or **F8** hides them. Hotkeys can be changed in Settings.
 - There is no automatic scanning, and the app doesn't track which augment you picked.
 - OCR is loaded when the app starts, so the first F7 is as fast as later ones.
-- Each scan's capture and results are saved in `%APPDATA%\ARAM Helper\scans\` (last 10), openable from Overview → 掃描紀錄. The app log is `app.log` in the same folder.
+- Each scan's capture and results are saved in `%APPDATA%\ARAM Helper\scans\` (last 10), openable from Overview → Scan history. The app log is `app.log` in the same folder.
 
 ### Why OCR
 
@@ -83,16 +83,16 @@ Windows OCR reads almost nothing on the full game screen because the ornate card
 
 1. The first scan sweeps overlapping horizontal strips over the middle of the screen, finds the card title row, and remembers its height.
 2. Later scans read only that strip (about 0.05–0.1 s in real games).
-3. All three cards on one screen share a rarity, so once one title matches, other titles with OCR typos are matched more loosely within that rarity. Such results are marked "推測" (inferred) on the badge.
+3. All three cards on one screen share a rarity, so once one title matches, other titles with OCR typos are matched more loosely within that rarity. Such results are marked "Inferred" on the badge.
 
 ## Data cache and credits
 
-- `config.json` (free): checked at startup and every 30 minutes for `dataVersion`, or with "檢查更新" on the overview. The app also reads the latest game patch from Riot's Data Dragon; when the game has a new patch that aramgg hasn't published statistics for yet, the overview says so.
+- `config.json` (free): checked at startup and every 30 minutes for `dataVersion`, or with "Check for updates" on the overview. The app also reads the latest game patch from Riot's Data Dragon; when the game has a new patch that aramgg hasn't published statistics for yet, the overview says so.
 - Champion / augment / item / summoner spell lists (1 credit each): downloaded again only when `dataVersion` changes.
 - Champion details (2 credits each): downloaded on demand in champ select or in game, and **valid for the whole game patch (e.g. 16.21.x)**. Minor data updates (16.21.4 → 16.21.5) don't drop cached champions; they are refreshed in the background with leftover credits.
-- Background prefetch: missing champions first, then outdated ones, by pick rate, 2.5 s between requests, keeping 80 credits in reserve by default (Settings → 資料). Prefetching everything would need 4 + 173×2 = 350 credits, more than a day's quota, so it is not done all at once at startup.
+- Background prefetch: missing champions first, then outdated ones, by pick rate, 2.5 s between requests, keeping 80 credits in reserve by default (Settings → Data). Prefetching everything would need 4 + 173×2 = 350 credits, more than a day's quota, so it is not done all at once at startup.
 - Cache files are never deleted on a data update; if a download fails, the older cache is used. Cache folder: `%APPDATA%\ARAM Helper\aram-data\`.
-- Every request that spends credits (time, item, reason, cost, credits left) is listed under "Credits 使用紀錄" on the overview, keeping the last 300 (`aram-data\credit-log.json`), and written to `app.log`.
+- Every request that spends credits (time, item, reason, cost, credits left) is listed under "Credit log" on the overview, keeping the last 300 (`aram-data\credit-log.json`), and written to `app.log`.
 
 ## Disclaimer
 

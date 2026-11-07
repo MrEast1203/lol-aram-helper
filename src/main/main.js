@@ -17,6 +17,8 @@ const { AugmentDetector } = require('./augmentDetector');
 const { GuideStore } = require('./guides');
 const { GlobalInput } = require('./input');
 const { Controller } = require('./controller');
+const i18n = require('./i18n');
+const { t } = i18n;
 
 // ARAM_VERSION_OVERRIDE is only for testing the takeover below.
 const APP_VERSION = process.env.ARAM_VERSION_OVERRIDE || app.getVersion();
@@ -138,14 +140,26 @@ function createChampPanel() {
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
   tray.setToolTip('ARAM Helper');
+  setTrayMenu();
+  tray.on('double-click', () => showDashboard());
+}
+
+function setTrayMenu() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: '開啟主視窗', click: () => showDashboard() },
+      { label: t('開啟主視窗'), click: () => showDashboard() },
       { type: 'separator' },
-      { label: '結束', click: () => app.quit() },
+      { label: t('結束'), click: () => app.quit() },
     ])
   );
-  tray.on('double-click', () => showDashboard());
+}
+
+// Switching the app language reloads every window, which picks up the new strings.
+function applyLanguage() {
+  i18n.setLang(i18n.resolveLang(settings.get().uiLang, app.getLocale()));
+  if (tray) setTrayMenu();
+  for (const w of [dashboard, overlay, champPanel]) if (w && !w.isDestroyed()) w.webContents.reload();
+  data.emitStatus();
 }
 
 function showDashboard() {
@@ -311,13 +325,15 @@ function registerIpc() {
   });
   ipcMain.handle('data:refresh', () => data.checkVersion());
   ipcMain.handle('data:creditLog', () => data.creditLog);
+  ipcMain.handle('data:cacheIndex', () => data.cacheIndex());
+  ipcMain.handle('app:i18n', () => ({ lang: i18n.getLang(), strings: i18n.strings() }));
   ipcMain.handle('data:clearCache', () => data.clearCache().then(() => data.checkVersion()));
   ipcMain.handle('detector:testFile', async () => {
-    const r = await dialog.showOpenDialog(dashboard, { title: '選擇海克斯選擇畫面的截圖', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp'] }] });
+    const r = await dialog.showOpenDialog(dashboard, { title: t('選擇海克斯選擇畫面的截圖'), properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp'] }] });
     if (r.canceled || !r.filePaths[0]) return null;
     const file = r.filePaths[0];
     const size = nativeImage.createFromPath(file).getSize();
-    if (!size.width) return { error: '無法讀取圖片' };
+    if (!size.width) return { error: t('無法讀取圖片') };
     try {
       return await controller.testScan({ x: 0, y: 0, w: size.width, h: size.height }, file, { file });
     } catch (e) {
@@ -379,6 +395,7 @@ app.whenReady().then(async () => {
   if (!(await acquireSingleInstance())) return app.quit();
   const userData = app.getPath('userData');
   settings = new Settings(path.join(userData, 'settings.json'), [process.cwd(), path.dirname(process.execPath), path.join(app.getAppPath(), '..')]);
+  i18n.setLang(i18n.resolveLang(settings.get().uiLang, app.getLocale()));
   data = new DataStore({ dir: path.join(userData, 'aram-data'), settings, log });
   native = new NativeHelper(log, { warmupLang: () => settings.get().ocrLang });
   lcu = new LcuClient({ native, settings, log });
@@ -395,6 +412,7 @@ app.whenReady().then(async () => {
     if ('hideFromCapture' in patch) overlay?.setContentProtection(v.hideFromCapture);
     if ('locale' in patch) data.clearMemory().then(() => data.checkVersion());
     if ('apiKey' in patch) data.checkVersion();
+    if ('uiLang' in patch) applyLanguage();
     notifyData('settings');
   });
   controller.on('state', broadcast);

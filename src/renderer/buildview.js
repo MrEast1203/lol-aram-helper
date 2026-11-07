@@ -1,5 +1,6 @@
 // Build panel shared by the Tab overlay, champ select panel and dashboard.
 import { h, pct, num, tierBadge, itemRow, summarizeBuild, guidesForChampion } from './common.js';
+import { t } from './i18n.js';
 
 export function guideBox(db, g, hot = false) {
   return h(
@@ -13,7 +14,7 @@ export function guideBox(db, g, hot = false) {
 
 export function spellsRow(db, spells, limit = 2) {
   return spells.slice(0, limit).map((s) =>
-    h('div', { class: 'row' }, s.summonerSpellIds.map((id) => db.spellIcon(id, 24)), h('span', { class: 'muted' }, `${pct(s.winRate)} 勝 · ${pct(s.pickRate, 0)} 選`))
+    h('div', { class: 'row' }, s.summonerSpellIds.map((id) => db.spellIcon(id, 24)), h('span', { class: 'muted' }, t('{win} 勝 · {pick} 選', { win: pct(s.winRate), pick: pct(s.pickRate, 0) })))
   );
 }
 
@@ -27,36 +28,36 @@ export function skillLine(sum) {
   );
 }
 
-const buildSummaryLine = (s) => `${pct(s.winRate)} 勝 · ${pct(s.pickRate, 0)} 選 · ${num(s.games)} 場`;
+const buildSummaryLine = (s) => t('{win} 勝 · {pick} 選 · {games} 場', { win: pct(s.winRate), pick: pct(s.pickRate, 0), games: num(s.games) });
 
 // Below this many games a starting set is noise rather than a recommendation.
 const MIN_STARTING_GAMES = 30;
 
 function startingRow(db, top) {
-  const label = h('span', { class: 'label' }, '出門');
-  if (!top || top.games < MIN_STARTING_GAMES) return h('div', { class: 'row' }, label, h('span', { class: 'muted' }, '樣本不足'));
-  return h('div', { class: 'row' }, label, itemRow(db, top.itemIds, 26), h('span', { class: 'muted' }, `${pct(top.winRate)} · ${num(top.games)}場`));
+  const label = h('span', { class: 'label' }, t('出門'));
+  if (!top || top.games < MIN_STARTING_GAMES) return h('div', { class: 'row' }, label, h('span', { class: 'muted' }, t('樣本不足')));
+  return h('div', { class: 'row' }, label, itemRow(db, top.itemIds, 26), h('span', { class: 'muted' }, t('{wr} · {games}場', { wr: pct(top.winRate), games: num(top.games) })));
 }
 
 export function buildBlock(db, build, index, { compact = false, head = true } = {}) {
   const s = summarizeBuild(build);
   if (!s) return null;
   const header = head
-    ? h('div', { class: 'build-head row' }, h('b', null, `流派 ${index + 1}`), s.tag ? h('span', { class: 'tag' }, s.tag) : null, h('span', { class: 'muted' }, buildSummaryLine(s)))
+    ? h('div', { class: 'build-head row' }, h('b', null, t('流派 {n}', { n: index + 1 })), s.tag ? h('span', { class: 'tag' }, s.tag) : null, h('span', { class: 'muted' }, buildSummaryLine(s)))
     : null;
   if (compact) return h('div', { class: 'build col' }, header, s.cores[0] ? itemRow(db, s.cores[0].itemIds, 26, true) : null);
   return h(
     'div',
     { class: 'build col' },
     header,
-    h('div', { class: 'row' }, h('span', { class: 'label' }, '召喚師'), spellsRow(db, s.spells, 1)),
+    h('div', { class: 'row' }, h('span', { class: 'label' }, t('召喚師')), spellsRow(db, s.spells, 1)),
     startingRow(db, s.starting[0]),
     s.cores.slice(0, 2).map((c, i) =>
-      h('div', { class: 'row' }, h('span', { class: 'label' }, i ? '核心 B' : '核心'), itemRow(db, c.itemIds, 30, true), h('span', { class: 'muted' }, `${pct(c.winRate)} · ${num(c.games)}場`))
+      h('div', { class: 'row' }, h('span', { class: 'label' }, i ? t('核心 B') : t('核心')), itemRow(db, c.itemIds, 30, true), h('span', { class: 'muted' }, t('{wr} · {games}場', { wr: pct(c.winRate), games: num(c.games) })))
     ),
-    s.followups.length ? h('div', { class: 'row' }, h('span', { class: 'label' }, '後續'), itemRow(db, s.followups, 26)) : null,
-    s.situational.length ? h('div', { class: 'row' }, h('span', { class: 'label' }, '情境'), itemRow(db, s.situational, 24)) : null,
-    h('div', { class: 'row' }, h('span', { class: 'label' }, '技能'), skillLine(s))
+    s.followups.length ? h('div', { class: 'row' }, h('span', { class: 'label' }, t('後續')), itemRow(db, s.followups, 26)) : null,
+    s.situational.length ? h('div', { class: 'row' }, h('span', { class: 'label' }, t('情境')), itemRow(db, s.situational, 24)) : null,
+    h('div', { class: 'row' }, h('span', { class: 'label' }, t('技能')), skillLine(s))
   );
 }
 
@@ -66,7 +67,7 @@ export function guidesPanel(db, guides, championId, highlightAugmentIds = []) {
   const list = guidesForChampion(guides, championId);
   if (!list.length) return null;
   const hot = (g) => g.augmentIds.some((id) => highlightAugmentIds.includes(id));
-  return h('div', { class: 'guides-panel col' }, h('div', { class: 'section' }, '📘 自訂攻略'), [...list.filter(hot), ...list.filter((g) => !hot(g))].map((g) => guideBox(db, g, hot(g))));
+  return h('div', { class: 'guides-panel col' }, h('div', { class: 'section' }, t('📘 自訂攻略')), [...list.filter(hot), ...list.filter((g) => !hot(g))].map((g) => guideBox(db, g, hot(g))));
 }
 
 export const buildTag = (b) => (b?.tags ? Object.values(b.tags).join(' / ') : '');
@@ -87,7 +88,7 @@ export function buildSelector(db, builds, index, onSelect) {
   const head = h(
     'div',
     { class: 'bs-head row', onclick: () => root.classList.toggle('open') },
-    h('b', null, `流派 ${index + 1}/${builds.length}`),
+    h('b', null, t('流派 {n}/{total}', { n: index + 1, total: builds.length })),
     cur.tag ? h('span', { class: 'tag' }, cur.tag) : null,
     h('span', { class: 'muted' }, buildSummaryLine(cur)),
     h('span', { class: 'bs-caret' }, '▾')
@@ -100,7 +101,7 @@ export function buildSelector(db, builds, index, onSelect) {
       return h(
         'div',
         { class: `bs-opt col ${i === index ? 'on' : ''}`, onclick: () => (root.classList.remove('open'), onSelect(i, buildTag(b))) },
-        h('div', { class: 'row' }, h('b', null, `流派 ${i + 1}`), s.tag ? h('span', { class: 'tag' }, s.tag) : null, h('span', { class: 'muted' }, buildSummaryLine(s))),
+        h('div', { class: 'row' }, h('b', null, t('流派 {n}', { n: i + 1 })), s.tag ? h('span', { class: 'tag' }, s.tag) : null, h('span', { class: 'muted' }, buildSummaryLine(s))),
         s.cores[0] ? itemRow(db, s.cores[0].itemIds, 22, true) : null
       );
     })
@@ -122,13 +123,13 @@ export function buildPanel(db, { championId, detail, stale = false, choice, onSe
       'div',
       { class: 'row panel-head' },
       db.champIcon(championId, 40),
-      h('div', { class: 'col', style: { gap: '2px' } }, h('b', { class: 'champ-name' }, champ?.name || '未知英雄'), h('span', { class: 'muted' }, champ?.title || '')),
+      h('div', { class: 'col', style: { gap: '2px' } }, h('b', { class: 'champ-name' }, champ?.name || t('未知英雄')), h('span', { class: 'muted' }, champ?.title || '')),
       h('div', { class: 'grow' }),
       tierBadge(champ?.stats?.tier),
       h('span', { class: 'muted' }, `#${db.champRank.get(championId) || '—'} · ${pct(champ?.stats?.winRate)}`)
     ),
     builds.length
-      ? h('div', { class: 'col' }, h('div', { class: 'section' }, '推薦出裝' + (stale ? '（舊版資料）' : '')), picker, buildBlock(db, builds[index], index, { head: !picker }))
-      : h('div', { class: 'muted' }, detail?.error ? `出裝資料載入失敗：${detail.error}` : '出裝資料載入中…')
+      ? h('div', { class: 'col' }, h('div', { class: 'section' }, t('推薦出裝') + (stale ? t('（舊版資料）') : '')), picker, buildBlock(db, builds[index], index, { head: !picker }))
+      : h('div', { class: 'muted' }, detail?.error ? t('出裝資料載入失敗：{error}', { error: detail.error }) : t('出裝資料載入中…'))
   );
 }

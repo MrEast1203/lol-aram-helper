@@ -10,6 +10,8 @@ const OBSOLETE = ['augmentLevels', 'autoScan', 'respawnScanMs', 'gameStartScanSe
 const DEFAULTS = {
   settingsVersion: SETTINGS_VERSION,
   apiKey: '',
+  // App language: 'auto' (Chinese on a Chinese system, otherwise English), 'zh-TW' or 'en'.
+  uiLang: 'auto',
   locale: 'zh-TW',
   ocrLang: 'zh-Hant-TW',
   installPath: 'C:\\Riot Games\\League of Legends',
