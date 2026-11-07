@@ -19,7 +19,7 @@ The interface is available in English and Traditional Chinese (Settings → 介�
 
 ## Install
 
-1. Download `ARAM-Helper-x.y.z-portable.exe` from [Releases](../../releases) and run it (no installation).
+1. Download `ARAM-Helper-x.y.z-portable.exe` from [Releases](https://github.com/MrEast1203/lol-aram-helper/releases) and run it (no installation).
    - The executable is not code-signed, so Windows SmartScreen may block it the first time: click "More info → Run anyway".
 2. Requirements:
    - Windows 10/11 (64-bit).

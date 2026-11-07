@@ -19,7 +19,7 @@
 
 ## 安裝
 
-1. 從 [Releases](../../releases) 下載 `ARAM-Helper-x.y.z-portable.exe`，直接執行即可（免安裝）。
+1. 從 [Releases](https://github.com/MrEast1203/lol-aram-helper/releases) 下載 `ARAM-Helper-x.y.z-portable.exe`，直接執行即可（免安裝）。
    - 執行檔沒有程式碼簽章，第一次執行時 Windows SmartScreen 可能會攔下來：按「其他資訊 → 仍要執行」。
 2. 需求：
    - Windows 10／11（64 位元）。
