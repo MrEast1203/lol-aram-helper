@@ -321,10 +321,15 @@ class Controller extends EventEmitter {
       });
       const ms = Date.now() - startedAt;
       if (save) this.writeScanLog(save, r, ms);
-      this.log.info(`[scan] ${r.offers.length} offers in ${ms} ms (OCR ${r.ms} ms, ${r.swept ? 'full sweep' : 'title row'}${r.cardRetries ? `, ${r.cardRetries} card retries` : ''})`);
+      this.log.info(
+        `[scan] ${r.offers.length} offers in ${ms} ms (OCR ${r.ms} ms, ${r.swept ? 'full sweep' : 'title row'}${r.cardRetries ? `, ${r.cardRetries} card retries` : ''})` +
+          r.unknown.map((u) => `, not in the data: "${u.text}"`).join('')
+      );
+      // Titles that matched no augment get a badge of their own (augmentId null).
+      const unknown = r.unknown.map((u) => ({ ...this.offerToView({ augmentId: null, box: u.box }), text: u.text }));
       this.patch({
-        offers: r.offers.map((o) => this.offerToView(o)),
-        scan: { active: false, found: r.offers.length, ms, at: Date.now() },
+        offers: [...r.offers.map((o) => this.offerToView(o)), ...unknown].sort((a, b) => a.x - b.x),
+        scan: { active: false, found: r.offers.length + r.unknown.length, unknown: r.unknown.length, ms, at: Date.now() },
         detector: { ...this.state.detector, scans: this.state.detector.scans + 1, lastMs: ms, lastError: null, lastScanAt: Date.now() },
       });
     } catch (e) {
@@ -360,6 +365,8 @@ class Controller extends EventEmitter {
       swept: r.swept,
       titleRowY: this.settings.get().titleRowY,
       offers: r.offers.map((o) => ({ id: o.augmentId, name: names.get(o.augmentId), text: o.text, inferred: !!o.inferred, box: o.box })),
+      unknown: r.unknown,
+      cardRetries: r.cardRetries,
       lines: r.lines.map((l) => ({ text: l.text, box: l.words[0] && { x: l.words[0].x, y: l.words[0].y, h: l.words[0].h } })),
     };
     fs.promises
@@ -394,6 +401,7 @@ class Controller extends EventEmitter {
       lines: r.lines.map((l) => l.text),
       candidates: r.candidates.map((c) => ({ id: c.augmentId, name: names.get(c.augmentId), text: c.text, score: +c.score.toFixed(2) })),
       offers: r.offers.map((c) => ({ id: c.augmentId, name: names.get(c.augmentId), inferred: !!c.inferred, text: c.text })),
+      unknown: r.unknown.map((u) => u.text),
     };
   }
 }

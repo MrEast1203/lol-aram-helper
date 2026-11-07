@@ -148,6 +148,50 @@ test('a card title missed in the strip is read again in a crop around its column
   assert.ok(crops.every((c) => c.w < 400), 'only narrow crops');
 });
 
+test('a third title that matches no augment is reported as unknown', async () => {
+  const settings = mockSettings({ titleRowY: 511 / 1080 });
+  const native = {
+    ocr: async (rect) =>
+      rect.w === 1920
+        ? { lines: [line('裝甲衝擊', 500, 500), line('巨人', 870, 500)], ms: 1 }
+        : { lines: rect.x > 1000 ? [line('一片歌手', 1220, 500), line('39474 場', 1220, 470, 9)] : [], ms: 1 },
+  };
+  const det = new AugmentDetector({ native, settings });
+  det.setAugments(AUGS);
+  const r = await det.scan({ x: 0, y: 0, w: 1920, h: 1080 });
+  assert.deepEqual(r.offers.map((o) => o.augmentId), [3049, 1060]);
+  assert.deepEqual(r.unknown.map((u) => u.text), ['一 片 歌 手']);
+});
+
+test('one matched card with two unknown titles in line is still a selection screen', async () => {
+  const settings = mockSettings({ titleRowY: 511 / 1080 });
+  let crops = 0;
+  const native = {
+    ocr: async (rect) => {
+      if (rect.w === 1920) return { lines: [line('一片歌手', 495, 500), line('裝甲衝擊', 870, 500), line('當頭棒喝', 1240, 500), line('施放技能', 870, 560)], ms: 1 };
+      crops++;
+      return { lines: [rect.x < 900 ? line('一片歌手', 495, 500) : line('當頭棒喝', 1240, 500)], ms: 1 };
+    },
+  };
+  const det = new AugmentDetector({ native, settings });
+  det.setAugments(AUGS);
+  const r = await det.scan({ x: 0, y: 0, w: 1920, h: 1080 });
+  assert.deepEqual(r.offers.map((o) => o.augmentId), [3049]);
+  assert.deepEqual(r.unknown.map((u) => u.text), ['一 片 歌 手', '當 頭 棒 喝']);
+  assert.equal(crops, 2, 'one crop per column: the same title read twice');
+  assert.ok(!r.swept);
+});
+
+test('one matched title alone is not a selection screen', async () => {
+  const settings = mockSettings({ titleRowY: 511 / 1080 });
+  const native = { ocr: async () => ({ lines: [line('裝甲衝擊', 870, 500), line('隨便的字', 1500, 500)], ms: 1 }) };
+  const det = new AugmentDetector({ native, settings });
+  det.setAugments(AUGS);
+  const r = await det.scan({ x: 0, y: 0, w: 1920, h: 1080 });
+  assert.equal(r.offers.length, 0);
+  assert.equal(r.unknown.length, 0);
+});
+
 test('helper.ps1 is ASCII-only (PowerShell 5.1 reads BOM-less scripts as the ANSI codepage)', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '../src/main/helper.ps1'), 'utf8');
   assert.ok(!/[^\x00-\x7F]/.test(src));

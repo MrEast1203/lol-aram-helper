@@ -25,19 +25,25 @@ function renderBadges() {
   const offers = state.game ? state.offers || [] : [];
   if (!offers.length) return;
   const champId = state.game.championId;
-  const infos = offers.map((o) => augmentInfo(db, detail, o.augmentId));
+  const infos = offers.map((o) => (o.augmentId == null ? null : augmentInfo(db, detail, o.augmentId)));
   // Best offer: lowest champion rank, else best global tier / win rate.
-  const score = (i) => (i.rank != null ? i.rank : 1000 + (i.tier ?? 9) * 100 - (i.winRate || 0) * 100);
+  const score = (i) => (!i ? Infinity : i.rank != null ? i.rank : 1000 + (i.tier ?? 9) * 100 - (i.winRate || 0) * 100);
   const bestIdx = infos.reduce((b, i, k) => (score(i) < score(infos[b]) ? k : b), 0);
   offers.forEach((o, k) => {
     const info = infos[k];
+    const at = { left: `${o.x + o.w / 2}px`, top: `${o.y - settings.badgeOffsetY}px` };
+    // A title read on screen that matches no augment in the data (e.g. new in this patch).
+    if (!info) {
+      root.append(h('div', { class: 'badge bx', style: at }, h('div', { class: 'main' }, h('span', { class: 'tier tier-x' }, '?')), h('div', { class: 'sub' }, t('新海克斯，還沒有統計資料'))));
+      return;
+    }
     const g = guidesForAugment(guides, champId, o.augmentId);
     root.append(
       h(
         'div',
         {
           class: `badge b${info.tier ?? 'x'} ${k === bestIdx && offers.length > 1 ? 'top' : ''}`,
-          style: { left: `${o.x + o.w / 2}px`, top: `${o.y - settings.badgeOffsetY}px` },
+          style: at,
         },
         h(
           'div',
@@ -181,7 +187,9 @@ function renderScanStatus() {
     const text = s.error
       ? t('掃描失敗：{error}', { error: s.error })
       : s.found
-        ? t('✓ 找到 {n} 個海克斯 · {sec} 秒 · {keys}', { n: s.found, sec: (s.ms / 1000).toFixed(2), keys })
+        ? s.unknown
+          ? t('✓ 找到 {n} 個海克斯（{u} 個沒有資料）· {sec} 秒 · {keys}', { n: s.found, u: s.unknown, sec: (s.ms / 1000).toFixed(2), keys })
+          : t('✓ 找到 {n} 個海克斯 · {sec} 秒 · {keys}', { n: s.found, sec: (s.ms / 1000).toFixed(2), keys })
         : t('✗ 沒偵測到海克斯選擇畫面 · 截圖已存到掃描紀錄');
     el.replaceChildren(h('div', { class: `label ${s.found ? 'ok' : 'bad'}` }, text));
     statusTimer = setTimeout(renderScanStatus, 3000 - (Date.now() - s.at));
@@ -216,6 +224,10 @@ new MutationObserver(queueRegions).observe(document.body, { subtree: true, child
 const resizes = new ResizeObserver(queueRegions);
 for (const id of ['tab', 'guides', 'scanBtn']) resizes.observe(document.getElementById(id));
 window.addEventListener('resize', queueRegions);
+
+// Clicks that reach the overlay are logged (the main process logs when it is clickable),
+// so app.log shows whether a click on a panel arrived.
+document.addEventListener('mousedown', (e) => api.overlayLog(`mousedown ${e.clientX},${e.clientY} on ${e.target.className || e.target.tagName}`), true);
 
 const scanBtn = document.getElementById('scanBtn');
 scanBtn.addEventListener('click', () => api.manualScan());

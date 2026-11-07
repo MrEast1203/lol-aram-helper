@@ -30,15 +30,6 @@ export function skillLine(sum) {
 
 const buildSummaryLine = (s) => t('{win} 勝 · {pick} 選 · {games} 場', { win: pct(s.winRate), pick: pct(s.pickRate, 0), games: num(s.games) });
 
-// Below this many games a starting set is noise rather than a recommendation.
-const MIN_STARTING_GAMES = 30;
-
-function startingRow(db, top) {
-  const label = h('span', { class: 'label' }, t('出門'));
-  if (!top || top.games < MIN_STARTING_GAMES) return h('div', { class: 'row' }, label, h('span', { class: 'muted' }, t('樣本不足')));
-  return h('div', { class: 'row' }, label, itemRow(db, top.itemIds, 26), h('span', { class: 'muted' }, t('{wr} · {games}場', { wr: pct(top.winRate), games: num(top.games) })));
-}
-
 export function buildBlock(db, build, index, { compact = false, head = true } = {}) {
   const s = summarizeBuild(build);
   if (!s) return null;
@@ -51,7 +42,6 @@ export function buildBlock(db, build, index, { compact = false, head = true } = 
     { class: 'build col' },
     header,
     h('div', { class: 'row' }, h('span', { class: 'label' }, t('召喚師')), spellsRow(db, s.spells, 1)),
-    startingRow(db, s.starting[0]),
     s.cores.slice(0, 2).map((c, i) =>
       h('div', { class: 'row' }, h('span', { class: 'label' }, i ? t('核心 B') : t('核心')), itemRow(db, c.itemIds, 30, true), h('span', { class: 'muted' }, t('{wr} · {games}場', { wr: pct(c.winRate), games: num(c.games) })))
     ),

@@ -255,8 +255,6 @@
   "選角面板": "Champ select panel",
   "{win} 勝 · {pick} 選": "{win} WR · {pick} PR",
   "{win} 勝 · {pick} 選 · {games} 場": "{win} WR · {pick} PR · {games} games",
-  "出門": "Start",
-  "樣本不足": "Too few games",
   "{wr} · {games}場": "{wr} · {games} games",
   "流派 {n}": "Build {n}",
   "召喚師": "Spells",
@@ -299,5 +297,9 @@
   "選角助手": "Champ select helper",
   "ARAM Helper · 選角": "ARAM Helper · Champ select",
   "本次隱藏": "Hide for now",
-  "其他": "Other"
+  "其他": "Other",
+  "新海克斯，還沒有統計資料": "New augment, no statistics yet",
+  "畫面上讀到這個名稱，但資料裡沒有（可能是新版本加入的海克斯）": "This name was read on screen but isn't in the data (probably an augment added in a new patch)",
+  "無資料": "No data",
+  "✓ 找到 {n} 個海克斯（{u} 個沒有資料）· {sec} 秒 · {keys}": "✓ Found {n} augments ({u} with no data) · {sec} s · {keys}"
 }

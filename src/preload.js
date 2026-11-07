@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
   manualScan: () => invoke('scan:manual'),
   setOverlayRegions: (rects) => send('overlay:regions', rects),
   setOverlayDragging: (on) => send('overlay:drag', on),
+  overlayLog: (msg) => send('overlay:log', msg),
   openScans: () => invoke('app:openScans'),
   applySpells: (a, b) => invoke('lcu:applySpells', a, b),
   openExternal: (url) => invoke('app:openExternal', url),

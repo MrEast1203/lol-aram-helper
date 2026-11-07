@@ -23,6 +23,41 @@ document.querySelectorAll('#nav button[data-tab]').forEach((b) =>
   })
 );
 
+// A search box that re-renders the view as you type. While an IME (注音, 拼音) is still
+// composing, the input is left alone: replacing it would drop the half-typed characters.
+function searchInput(placeholder, value, set) {
+  const update = (e) => {
+    if (e.isComposing) return;
+    set(e.target.value);
+    const pos = e.target.selectionStart;
+    render();
+    const inp = view.querySelector('input.search');
+    inp.focus();
+    inp.setSelectionRange(pos, pos);
+  };
+  return h('input', { class: 'search', placeholder, value, oninput: update, oncompositionend: update });
+}
+
+// Renders caused by background updates (prefetch, live data) wait while you type in a
+// text field of the view, and run once it loses focus.
+let renderPending = false;
+const typing = () => {
+  const el = document.activeElement;
+  return !!el && view.contains(el) && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|password|)$/.test(el.type)));
+};
+function softRender() {
+  if (typing()) renderPending = true;
+  else render();
+}
+view.addEventListener('focusout', () =>
+  setTimeout(() => {
+    if (renderPending && !typing()) {
+      renderPending = false;
+      render();
+    }
+  })
+);
+
 function render() {
   renderNav();
   const fn = { overview: renderOverview, champions: renderChampions, augments: renderAugments, guides: renderGuides, settings: renderSettings }[tab];
@@ -74,7 +109,12 @@ function openPicker({ title, entries, multi = false, selected = [], filters = []
     );
   };
   const close = () => modal.classList.add('hidden');
-  const search = h('input', { placeholder: t('搜尋…'), class: 'grow', oninput: (ev) => ((query = ev.target.value.trim().toLowerCase()), draw()) });
+  const filterBy = (ev) => {
+    if (ev.isComposing) return;
+    query = ev.target.value.trim().toLowerCase();
+    draw();
+  };
+  const search = h('input', { placeholder: t('搜尋…'), class: 'grow', oninput: filterBy, oncompositionend: filterBy });
   modal.replaceChildren(
     h(
       'div',
@@ -187,6 +227,8 @@ function buildChoiceProps(championId) {
 
 // ---------------- overview ----------------
 
+const unknownChip = (text) => h('span', { class: 'chip', title: t('畫面上讀到這個名稱，但資料裡沒有（可能是新版本加入的海克斯）') }, `? ${text}`, h('span', { class: 'tag' }, t('無資料')));
+
 function dot(on, warn) {
   return h('span', { class: `status-dot ${on ? 'on' : warn ? 'warn' : ''}` });
 }
@@ -207,7 +249,7 @@ function cachedCreditLog() {
     creditLog.at = at;
     api.creditLog().then((entries) => {
       creditLog.entries = entries;
-      render();
+      softRender();
     });
   }
   return creditLog.entries;
@@ -215,7 +257,7 @@ function cachedCreditLog() {
 function cachedDetail(id) {
   if (!detailCache.has(id)) {
     detailCache.set(id, undefined);
-    loadDetail(id).then(() => render());
+    loadDetail(id).then(() => softRender());
   }
   return detailCache.get(id);
 }
@@ -254,7 +296,7 @@ function renderOverview() {
             s.gameWindow ? h('span', { class: 'muted' }, s.gameWindow.foreground ? t('視窗在前景') : t('視窗在背景')) : h('span', { class: 'muted' }, t('找不到遊戲視窗'))
           ),
           s.offers.length
-            ? h('div', { class: 'row' }, h('span', { class: 'muted' }, t('畫面上的海克斯：')), s.offers.map((o) => h('span', { class: 'chip' }, db.augIcon(o.augmentId, 22), db.aug(o.augmentId)?.name || o.augmentId)))
+            ? h('div', { class: 'row' }, h('span', { class: 'muted' }, t('畫面上的海克斯：')), s.offers.map((o) => (o.augmentId == null ? unknownChip(o.text) : h('span', { class: 'chip' }, db.augIcon(o.augmentId, 22), db.aug(o.augmentId)?.name || o.augmentId))))
             : null
         )
       : h('div', { class: 'muted' }, t('目前不在遊戲中。'))
@@ -322,7 +364,7 @@ function renderOverview() {
             { class: 'col' },
             h('div', null, t('耗時 {ms} ms，辨識 {lines} 行，匹配 {n} 個海克斯名稱。', { ms: scan.ms, lines: scan.lines.length, n: scan.candidates.length })),
             scan.offers.length
-              ? h('div', { class: 'row' }, h('b', null, t('偵測到選擇畫面：')), scan.offers.map((o) => h('span', { class: 'chip', title: `OCR：${o.text}` }, db.augIcon(o.id, 22), o.name, o.inferred ? h('span', { class: 'tag' }, t('推測')) : null)))
+              ? h('div', { class: 'row' }, h('b', null, t('偵測到選擇畫面：')), scan.offers.map((o) => h('span', { class: 'chip', title: `OCR：${o.text}` }, db.augIcon(o.id, 22), o.name, o.inferred ? h('span', { class: 'tag' }, t('推測')) : null)), (scan.unknown || []).map(unknownChip))
               : h('div', { class: 'muted' }, t('沒有偵測到海克斯選擇畫面（需要同一排至少 {n} 張卡）。', { n: settings.minCardMatches })),
             scan.candidates.length ? h('pre', { class: 'scan' }, scan.candidates.map((c) => `${c.name}  ← 「${c.text}」 (${c.score})`).join('\n')) : null,
             h('details', null, h('summary', { class: 'muted' }, t('OCR 原始文字')), h('pre', { class: 'scan' }, scan.lines.join('\n'))),
@@ -469,7 +511,7 @@ function cachedVersions() {
     cacheIndex.key = key;
     api.cacheIndex().then((map) => {
       cacheIndex.map = map;
-      render();
+      softRender();
     });
   }
   return cacheIndex.map;
@@ -525,18 +567,7 @@ function renderChampions() {
       h(
         'div',
         { class: 'toolbar' },
-        h('input', {
-          placeholder: t('搜尋英雄…'),
-          value: ui.champSearch,
-          oninput: (e) => {
-            ui.champSearch = e.target.value;
-            const pos = e.target.selectionStart;
-            render();
-            const inp = view.querySelector('input');
-            inp.focus();
-            inp.setSelectionRange(pos, pos);
-          },
-        }),
+        searchInput(t('搜尋英雄…'), ui.champSearch, (v) => (ui.champSearch = v)),
         h('span', { class: 'muted' }, t('{n} 位英雄 · 排名依 Tier 再依勝率', { n: list.length }))
       ),
       table
@@ -630,18 +661,7 @@ function renderAugments() {
     h(
       'div',
       { class: 'toolbar' },
-      h('input', {
-        placeholder: t('搜尋海克斯…'),
-        value: ui.augSearch,
-        oninput: (e) => {
-          ui.augSearch = e.target.value;
-          const pos = e.target.selectionStart;
-          render();
-          const inp = view.querySelector('input');
-          inp.focus();
-          inp.setSelectionRange(pos, pos);
-        },
-      }),
+      searchInput(t('搜尋海克斯…'), ui.augSearch, (v) => (ui.augSearch = v)),
       augFilters.map((f) =>
         h(
           'button',
@@ -962,7 +982,7 @@ api.onState((s) => {
   const key = JSON.stringify([s.lcu, s.windowMode, s.champSelect, s.game && { ...s.game, gameTime: 0 }, s.gameWindow?.foreground, !!s.gameWindow, s.detector.scans >> 3, s.detector.lastError, s.scan, s.offers, s.data, s.history.length]);
   if (key !== lastOverviewKey) {
     lastOverviewKey = key;
-    if (document.getElementById('modal').classList.contains('hidden')) render();
+    if (document.getElementById('modal').classList.contains('hidden')) softRender();
   }
 });
 api.onDataChanged(async (d) => {
@@ -974,6 +994,6 @@ api.onDataChanged(async (d) => {
     cacheIndex.key = undefined;
   }
   if (d.kind === 'settings' && tab === 'settings') return;
-  render();
+  softRender();
 });
 render();

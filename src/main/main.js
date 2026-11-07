@@ -179,11 +179,12 @@ function physToDip(rect) {
 const overlayMouse = { regions: [], dragging: false, interactive: false, timer: null };
 const overlayAlive = () => !!overlay && !overlay.isDestroyed();
 
-function setOverlayInteractive(on) {
+function setOverlayInteractive(on, cursor) {
   if (!overlayAlive() || !overlay.isVisible() || on === overlayMouse.interactive) return;
   overlayMouse.interactive = on;
   overlay.setIgnoreMouseEvents(!on, { forward: true });
-  if (process.env.ARAM_DEBUG_MOUSE) log.info('[overlay] interactive', on);
+  // Logged while a Tab panel is up, to diagnose clicks that don't reach the panels.
+  if (overlayMouse.regions.length > 1 || process.env.ARAM_DEBUG_MOUSE) log.info(`[overlay] clickable ${on}${cursor ? ` at ${cursor.x},${cursor.y}` : ''}${overlayMouse.dragging ? ' (dragging)' : ''}`);
 }
 
 function pollOverlayMouse() {
@@ -200,7 +201,10 @@ function pollOverlayMouse() {
   const b = overlay.getBounds();
   const x = p.x - b.x;
   const y = p.y - b.y;
-  setOverlayInteractive(m.regions.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h));
+  setOverlayInteractive(
+    m.regions.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h),
+    { x, y }
+  );
 }
 
 function watchOverlayMouse() {
@@ -217,6 +221,7 @@ function layoutOverlay(state) {
     if (overlay.isVisible()) {
       setOverlayInteractive(false);
       overlay.hide();
+      log.info('[overlay] hidden');
     }
     pollOverlayMouse();
     lastOverlayBounds = null;
@@ -235,9 +240,11 @@ function layoutOverlay(state) {
     overlay.setIgnoreMouseEvents(true, { forward: true });
     overlay.setAlwaysOnTop(true, 'screen-saver');
     watchOverlayMouse();
+    log.info('[overlay] shown at', key);
   } else if (key !== lastOverlayBounds) {
     lastOverlayBounds = key;
     overlay.setBounds(bounds);
+    log.info('[overlay] moved to', key);
   }
 }
 
@@ -310,11 +317,18 @@ function registerIpc() {
   });
   ipcMain.handle('scan:manual', () => controller.manualScan());
   ipcMain.handle('scan:hide', () => controller.hideOffers());
+  let loggedRegions = '';
   ipcMain.on('overlay:regions', (_e, rects) => {
     overlayMouse.regions = Array.isArray(rects) ? rects : [];
-    if (process.env.ARAM_DEBUG_MOUSE) log.info('[overlay] regions', JSON.stringify(overlayMouse.regions));
+    // Panel spots are logged when they change (not on every Tab press).
+    const key = JSON.stringify(overlayMouse.regions);
+    if ((overlayMouse.regions.length > 1 && key !== loggedRegions) || process.env.ARAM_DEBUG_MOUSE) {
+      loggedRegions = key;
+      log.info('[overlay] clickable areas', key);
+    }
     watchOverlayMouse();
   });
+  ipcMain.on('overlay:log', (_e, msg) => log.info('[overlay]', String(msg).slice(0, 200)));
   ipcMain.on('overlay:drag', (_e, on) => {
     overlayMouse.dragging = !!on;
     watchOverlayMouse();

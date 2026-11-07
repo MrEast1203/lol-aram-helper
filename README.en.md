@@ -12,8 +12,8 @@ The interface is available in English and Traditional Chinese (Settings → 介�
 
 1. **Champ select panel**: shown next to the client during champ select. Your champion's tier, overall rank, win/pick rate; then the tiers of bench and teammate champions (for swaps); recommended summoner spells (one-click apply); builds (with a build picker); and finally the champion's recommended augments.
 2. **In-game augments**: press **F7** on the augment selection screen and each card gets a badge with its champion-specific tier and rank (#3/121). The top pick is marked ★, and augments that have a custom guide show 📘. Press F7 again after a reroll, **F8** to hide. (Augment win rates are not shown, per Riot policy; see [policy notes](#policy-notes).)
-3. **Hold Tab**: one side shows the recommended build (spells, starting items, core, later items, situational items, skill order) with a dropdown to switch builds (remembered per champion, shared with the champ select panel); the other side always shows your **custom guides** for that champion. While holding Tab you can click the dropdown with the mouse, and drag a panel by its "⠿ Drag" bar to move it (the position is remembered; double-click the bar to reset). Click "—" at the bar's right end to shrink a panel to just its bar, and "▢" to expand it again (remembered).
-   - Starting items are sorted by games; sets with fewer than 30 games show "Too few games", since aramgg's starting-item data is mostly sparse.
+3. **Hold Tab**: one side shows the recommended build (spells, core, later items, situational items, skill order) with a dropdown to switch builds (remembered per champion, shared with the champ select panel); the other side always shows your **custom guides** for that champion. While holding Tab you can click the dropdown with the mouse, and drag a panel by its "⠿ Drag" bar to move it (the position is remembered; double-click the bar to reset). Click "—" at the bar's right end to shrink a panel to just its bar, and "▢" to expand it again (remembered).
+   - Starting items aren't shown: aramgg's starting-item data is mostly sparse.
 4. **Custom guides**: e.g. "Armor Shock → Cloth Armor › Chain Vest › Thornmail". Can be limited to champions, imported/exported as JSON. A guide is highlighted when one of its augments is on screen.
 5. **Match history**: after each game, the augments you actually picked and the result are synced from match history.
 
@@ -84,7 +84,8 @@ Windows OCR reads almost nothing on the full game screen because the ornate card
 1. The first scan sweeps overlapping horizontal strips over the middle of the screen, finds the card title row, and remembers its height.
 2. Later scans read only that strip (about 0.05–0.1 s in real games).
 3. All three cards on one screen share a rarity, so once one title matches, other titles with OCR typos are matched more loosely within that rarity. Such results are marked "Inferred" on the badge.
-4. When only two cards are found, the third card's column follows from their spacing, and only that card's title is read again, in a few narrow crops. Windows OCR sometimes skips a short title (such as 溢流) in the full-width strip but reads it in a crop around its own card.
+4. When only two cards are found, the third card's column follows from their spacing, and only that card's title is read again, in a few narrow crops. Windows OCR sometimes skips a short title (such as 溢流), or a faint one on a card that glows while the mouse is over it, in the full-width strip, but reads it in a crop around its own card.
+5. When a title is read but no augment in the data has that name (usually one added in a new game patch that aramgg has no statistics for yet), that card shows "New augment, no statistics yet". With only one card matched, the screen still counts as the selection screen when titles are read one or two card spacings away on the same row.
 
 ## Data cache and credits
 
