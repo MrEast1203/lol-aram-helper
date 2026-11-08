@@ -233,7 +233,11 @@ function layoutOverlay(state) {
     // Order matters: with content protection on, a window that is made click-through
     // or resized while hidden stays unclickable outside its old size, which left the
     // Tab panel's build picker unclickable. So: show, then size, then click-through.
+    // And the size must really change after the show: a window shown again at the size
+    // it had takes no clicks at all (the Tab panels in the second game of one run). The
+    // first show only worked because the window grew from its initial 800×600.
     overlay.showInactive();
+    overlay.setBounds({ ...bounds, width: bounds.width - 1 });
     overlay.setBounds(bounds);
     lastOverlayBounds = key;
     overlayMouse.interactive = false;
