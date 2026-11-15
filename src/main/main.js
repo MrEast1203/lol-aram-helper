@@ -134,6 +134,7 @@ function createChampPanel() {
     e.preventDefault();
     champPanel.hide();
     champDismissed = true;
+    log.info('[champselect] panel closed (✕ or Alt+F4)');
   });
 }
 
@@ -263,7 +264,10 @@ function layoutChampPanel(state) {
   const cs = state.champSelect;
   if (!cs) champDismissed = false;
   if (!cs || champDismissed || !settings.get().champSelectPanel) {
-    if (champPanel.isVisible()) champPanel.hide();
+    if (champPanel.isVisible()) {
+      champPanel.hide();
+      log.info(`[champselect] panel hidden: ${!cs ? 'champ select ended' : champDismissed ? 'closed' : 'turned off in settings'}`);
+    }
     return;
   }
   const cw = state.clientWindow;
@@ -276,7 +280,10 @@ function layoutChampPanel(state) {
     if (x < display.x) x = c.x + c.width - width; // no room on either side: overlap the client edge
     champPanel.setBounds({ x: Math.round(x), y: Math.round(c.y), width, height: Math.round(Math.max(560, c.height)) });
   }
-  if (!champPanel.isVisible()) champPanel.showInactive();
+  if (!champPanel.isVisible()) {
+    champPanel.showInactive();
+    log.info(`[champselect] panel shown at ${JSON.stringify(champPanel.getBounds())}${cw ? '' : ' (client window not found)'}`);
+  }
 }
 
 let toastTimer;

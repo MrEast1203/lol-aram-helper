@@ -37,6 +37,7 @@ class LcuClient extends EventEmitter {
     this.busy = false;
     this.lastSessionJson = '';
     this.gameSession = null;
+    this.failures = 0;
   }
 
   async discover() {
@@ -77,6 +78,7 @@ class LcuClient extends EventEmitter {
   setConnected(v) {
     if (this.connected === v) return;
     this.connected = v;
+    this.log.info(`[lcu] ${v ? 'connected' : 'disconnected'}`);
     if (!v) this.setPhase(null);
     this.emit('connection', v);
   }
@@ -85,6 +87,10 @@ class LcuClient extends EventEmitter {
     if (this.phase === phase) return;
     const prev = this.phase;
     this.phase = phase;
+    // Entering a phase again (also after a reconnect) re-sends the champ select session,
+    // even when it is unchanged; else its panel stayed hidden for the rest of champ select.
+    this.lastSessionJson = '';
+    this.log.info(`[lcu] phase ${prev} -> ${phase}`);
     this.emit('phase', phase, prev);
   }
 
@@ -99,6 +105,7 @@ class LcuClient extends EventEmitter {
         if (!this.creds) return this.setConnected(false);
       }
       const phase = await this.req('GET', '/lol-gameflow/v1/gameflow-phase');
+      this.failures = 0;
       this.setConnected(true);
       const prev = this.phase;
       this.setPhase(phase);
@@ -125,9 +132,19 @@ class LcuClient extends EventEmitter {
         this.emit('endOfGame', eog);
       }
     } catch (e) {
-      if (e.code === 'ECONNREFUSED' || e.code === 'ECONNRESET' || e.code === 'ETIMEDOUT' || e.status === 401) {
+      // A refused connection or a rejected password means the client is gone or restarted.
+      // A reset or a timeout alone does not: a reused connection can be reset, and the
+      // client stalls for a few seconds at times. Treating one as a lost client cleared
+      // champ select and hid its panel, so those need three failures in a row.
+      const gone = e.code === 'ECONNREFUSED' || e.status === 401;
+      const flaky = e.code === 'ECONNRESET' || e.code === 'ETIMEDOUT';
+      if (gone || (flaky && ++this.failures >= 3)) {
+        if (this.connected) this.log.info(`[lcu] request failed (${e.code || e.status}), reconnecting`);
         this.creds = null;
+        this.failures = 0;
         this.setConnected(false);
+      } else if (flaky) {
+        this.log.info(`[lcu] request failed (${e.code}), retrying`);
       } else {
         this.log.warn('[lcu]', e.message);
       }
